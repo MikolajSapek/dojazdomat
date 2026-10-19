@@ -1,0 +1,9 @@
+fastapi==0.146.0
+httpx==0.28.1
+numpy==2.5.4
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+pydantic==2.14.1
+pytest==9.1.1
+uvicorn==0.54.0
+mcp==1.30.0

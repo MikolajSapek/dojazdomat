@@ -1,0 +1,5 @@
+{"id": "aaa", "lat": 52.2, "lon": 21.0, "price": 3000.0, "rent": 500.0, "rooms": 2, "area": 40.0, "flags": 3, "prec": 0, "posted": "2026-10-01"}
+{"id": "bbb", "lat": 52.0, "lon": 21.0, "price": 3000.0, "rent": 0, "rooms": 2, "area": 40.0, "flags": 0, "prec": 0, "posted": "2026-10-01"}
+{"id": "ccc", "lat": 52.21, "lon": 21.0, "price": 500.0, "rent": 0, "rooms": 2, "area": 40.0, "flags": 0, "prec": 0, "posted": "2026-10-01"}
+{"id": "ddd", "lat": 52.22, "lon": 21.0, "price": 2000.0, "rent": 0, "rooms": 7, "area": 40.0, "flags": 0, "prec": 1, "posted": "2026-10-01"}
+{"id": "eee", "lat": 52.2

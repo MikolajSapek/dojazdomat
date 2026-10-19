@@ -1,0 +1,8 @@
+{
+ "mPerMin": 50.0,
+ "circuity": 1.6,
+ "stopWalkCap": 15,
+ "originWalkCap": 25,
+ "bikeMPerMin": 135.9,
+ "note": "OSM street network (Overpass, osmnx, snapshot 2026-10-19). 5748 walk pairs from 2500 random origins in landuse=residential to their 3 nearest GTFS stops (mkuran.pl ZTM stops.txt, all modes), snap distances included. Walk network/straight circuity median 1.6, p75 1.99, p90 2.644. Network speed 80 m/min (4.8 km/h) => mPerMin = 80/circuity = 50.0 straight-line m/min (p75-based: 40.2). Bike 5711 pairs, circuity median 1.84, p75 2.639; network 250 m/min => bikeMPerMin 135.9. Caps: stopWalkCap 15 min (metro/rail, contract), originWalkCap 25. Per-district circuity: data/raw/walk/calibration.json. Caveat: bus-stop targets are denser than metro/rail so circuity to stations may be somewhat higher."
+}

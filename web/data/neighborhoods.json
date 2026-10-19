@@ -1,0 +1,866 @@
+[
+{
+"name": "Bemowo-Lotnisko",
+"district": "Bemowo",
+"lat": 52.25664,
+"lon": 20.91597
+},
+{
+"name": "Boernerowo",
+"district": "Bemowo",
+"lat": 52.2624,
+"lon": 20.89973
+},
+{
+"name": "Chrzanów",
+"district": "Bemowo",
+"lat": 52.22452,
+"lon": 20.88623
+},
+{
+"name": "Fort Bema",
+"district": "Bemowo",
+"lat": 52.25818,
+"lon": 20.9387
+},
+{
+"name": "Fort Radiowo",
+"district": "Bemowo",
+"lat": 52.2561,
+"lon": 20.88674
+},
+{
+"name": "Groty",
+"district": "Bemowo",
+"lat": 52.24863,
+"lon": 20.88708
+},
+{
+"name": "Górce",
+"district": "Bemowo",
+"lat": 52.24456,
+"lon": 20.9127
+},
+{
+"name": "Jelonki",
+"district": "Bemowo",
+"lat": 52.22648,
+"lon": 20.90966
+},
+{
+"name": "Jelonki Południowe",
+"district": "Bemowo",
+"lat": 52.22125,
+"lon": 20.91098
+},
+{
+"name": "Jelonki Północne",
+"district": "Bemowo",
+"lat": 52.23401,
+"lon": 20.90974
+},
+{
+"name": "Lotnisko",
+"district": "Bemowo",
+"lat": 52.27121,
+"lon": 20.8991
+},
+{
+"name": "Białołęka Dworska",
+"district": "Białołęka",
+"lat": 52.34479,
+"lon": 20.99641
+},
+{
+"name": "Brzeziny",
+"district": "Białołęka",
+"lat": 52.31972,
+"lon": 21.03591
+},
+{
+"name": "Choszczówka",
+"district": "Białołęka",
+"lat": 52.35532,
+"lon": 20.97091
+},
+{
+"name": "Dąbrówka Szlachecka",
+"district": "Białołęka",
+"lat": 52.34554,
+"lon": 20.95966
+},
+{
+"name": "Grodzisk",
+"district": "Białołęka",
+"lat": 52.32401,
+"lon": 21.06887
+},
+{
+"name": "Henryków",
+"district": "Białołęka",
+"lat": 52.33257,
+"lon": 20.97557
+},
+{
+"name": "Kobiałka",
+"district": "Białołęka",
+"lat": 52.35343,
+"lon": 21.0553
+},
+{
+"name": "Nowodwory",
+"district": "Białołęka",
+"lat": 52.33771,
+"lon": 20.94207
+},
+{
+"name": "Szamocin",
+"district": "Białołęka",
+"lat": 52.34655,
+"lon": 21.02082
+},
+{
+"name": "Tarchomin",
+"district": "Białołęka",
+"lat": 52.32132,
+"lon": 20.95718
+},
+{
+"name": "Żerań",
+"district": "Białołęka",
+"lat": 52.30824,
+"lon": 20.98752
+},
+{
+"name": "Chomiczówka",
+"district": "Bielany",
+"lat": 52.27591,
+"lon": 20.92095
+},
+{
+"name": "Huta",
+"district": "Bielany",
+"lat": 52.29483,
+"lon": 20.92315
+},
+{
+"name": "Las Bielański",
+"district": "Bielany",
+"lat": 52.29215,
+"lon": 20.96276
+},
+{
+"name": "Marymont-Kaskada",
+"district": "Bielany",
+"lat": 52.27965,
+"lon": 20.96666
+},
+{
+"name": "Marymont-Ruda",
+"district": "Bielany",
+"lat": 52.28686,
+"lon": 20.98453
+},
+{
+"name": "Młociny",
+"district": "Bielany",
+"lat": 52.31413,
+"lon": 20.91439
+},
+{
+"name": "Piaski",
+"district": "Bielany",
+"lat": 52.26875,
+"lon": 20.94437
+},
+{
+"name": "Placówka",
+"district": "Bielany",
+"lat": 52.29448,
+"lon": 20.90435
+},
+{
+"name": "Radiowo",
+"district": "Bielany",
+"lat": 52.28402,
+"lon": 20.89917
+},
+{
+"name": "Stare Bielany",
+"district": "Bielany",
+"lat": 52.28066,
+"lon": 20.94939
+},
+{
+"name": "Słodowiec",
+"district": "Bielany",
+"lat": 52.27256,
+"lon": 20.95468
+},
+{
+"name": "Wawrzyszew",
+"district": "Bielany",
+"lat": 52.28401,
+"lon": 20.93273
+},
+{
+"name": "Wrzeciono",
+"district": "Bielany",
+"lat": 52.29423,
+"lon": 20.94028
+},
+{
+"name": "Wólka Węglowa",
+"district": "Bielany",
+"lat": 52.30375,
+"lon": 20.89265
+},
+{
+"name": "Augustówka",
+"district": "Mokotów",
+"lat": 52.19727,
+"lon": 21.08661
+},
+{
+"name": "Czerniaków",
+"district": "Mokotów",
+"lat": 52.20409,
+"lon": 21.05831
+},
+{
+"name": "Ksawerów",
+"district": "Mokotów",
+"lat": 52.18379,
+"lon": 21.01555
+},
+{
+"name": "Sadyba",
+"district": "Mokotów",
+"lat": 52.18423,
+"lon": 21.06202
+},
+{
+"name": "Siekierki",
+"district": "Mokotów",
+"lat": 52.21092,
+"lon": 21.07494
+},
+{
+"name": "Sielce",
+"district": "Mokotów",
+"lat": 52.19968,
+"lon": 21.03789
+},
+{
+"name": "Stary Mokotów",
+"district": "Mokotów",
+"lat": 52.20454,
+"lon": 21.01283
+},
+{
+"name": "Stegny",
+"district": "Mokotów",
+"lat": 52.18074,
+"lon": 21.04369
+},
+{
+"name": "Służew",
+"district": "Mokotów",
+"lat": 52.17199,
+"lon": 21.02046
+},
+{
+"name": "Służewiec",
+"district": "Mokotów",
+"lat": 52.17937,
+"lon": 20.99462
+},
+{
+"name": "Wierzbno",
+"district": "Mokotów",
+"lat": 52.19442,
+"lon": 21.01546
+},
+{
+"name": "Wyględów",
+"district": "Mokotów",
+"lat": 52.20267,
+"lon": 20.99268
+},
+{
+"name": "Filtry",
+"district": "Ochota",
+"lat": 52.21827,
+"lon": 20.99691
+},
+{
+"name": "Rakowiec",
+"district": "Ochota",
+"lat": 52.20161,
+"lon": 20.97659
+},
+{
+"name": "Stara Ochota",
+"district": "Ochota",
+"lat": 52.21742,
+"lon": 20.97454
+},
+{
+"name": "Szczęśliwice",
+"district": "Ochota",
+"lat": 52.20726,
+"lon": 20.9561
+},
+{
+"name": "Gocław",
+"district": "Praga-Południe",
+"lat": 52.22584,
+"lon": 21.09347
+},
+{
+"name": "Gocławek",
+"district": "Praga-Południe",
+"lat": 52.24104,
+"lon": 21.11452
+},
+{
+"name": "Grochów",
+"district": "Praga-Południe",
+"lat": 52.24432,
+"lon": 21.08654
+},
+{
+"name": "Kamionek",
+"district": "Praga-Południe",
+"lat": 52.24629,
+"lon": 21.05649
+},
+{
+"name": "Olszynka Grochowska",
+"district": "Praga-Południe",
+"lat": 52.25018,
+"lon": 21.11444
+},
+{
+"name": "Saska Kępa",
+"district": "Praga-Południe",
+"lat": 52.22939,
+"lon": 21.05975
+},
+{
+"name": "Nowa Praga",
+"district": "Praga-Północ",
+"lat": 52.25893,
+"lon": 21.02913
+},
+{
+"name": "Pelcowizna",
+"district": "Praga-Północ",
+"lat": 52.27831,
+"lon": 21.01279
+},
+{
+"name": "Stara Praga",
+"district": "Praga-Północ",
+"lat": 52.24756,
+"lon": 21.03323
+},
+{
+"name": "Szmulowizna",
+"district": "Praga-Północ",
+"lat": 52.25697,
+"lon": 21.05287
+},
+{
+"name": "Kawęczyn-Wygoda",
+"district": "Rembertów",
+"lat": 52.25868,
+"lon": 21.12865
+},
+{
+"name": "Nowy Rembertów",
+"district": "Rembertów",
+"lat": 52.24854,
+"lon": 21.16076
+},
+{
+"name": "Stary Rembertów",
+"district": "Rembertów",
+"lat": 52.27352,
+"lon": 21.15886
+},
+{
+"name": "Bródno",
+"district": "Targówek",
+"lat": 52.28485,
+"lon": 21.03294
+},
+{
+"name": "Bródno-Podgrodzie",
+"district": "Targówek",
+"lat": 52.2999,
+"lon": 21.05992
+},
+{
+"name": "Elsnerów",
+"district": "Targówek",
+"lat": 52.27774,
+"lon": 21.09156
+},
+{
+"name": "Targówek Fabryczny",
+"district": "Targówek",
+"lat": 52.26698,
+"lon": 21.07902
+},
+{
+"name": "Targówek Mieszkaniowy",
+"district": "Targówek",
+"lat": 52.27505,
+"lon": 21.05203
+},
+{
+"name": "Utrata",
+"district": "Targówek",
+"lat": 52.26775,
+"lon": 21.1014
+},
+{
+"name": "Zacisze",
+"district": "Targówek",
+"lat": 52.28526,
+"lon": 21.07381
+},
+{
+"name": "Czechowice",
+"district": "Ursus",
+"lat": 52.18967,
+"lon": 20.87818
+},
+{
+"name": "Gołąbki",
+"district": "Ursus",
+"lat": 52.20048,
+"lon": 20.86334
+},
+{
+"name": "Niedźwiadek",
+"district": "Ursus",
+"lat": 52.19391,
+"lon": 20.86869
+},
+{
+"name": "Skorosze",
+"district": "Ursus",
+"lat": 52.19151,
+"lon": 20.90306
+},
+{
+"name": "Szamoty",
+"district": "Ursus",
+"lat": 52.20339,
+"lon": 20.88389
+},
+{
+"name": "Dąbrówka",
+"district": "Ursynów",
+"lat": 52.11383,
+"lon": 21.02303
+},
+{
+"name": "Grabów",
+"district": "Ursynów",
+"lat": 52.14719,
+"lon": 21.01224
+},
+{
+"name": "Jeziorki Południowe",
+"district": "Ursynów",
+"lat": 52.11836,
+"lon": 20.99964
+},
+{
+"name": "Jeziorki Północne",
+"district": "Ursynów",
+"lat": 52.13234,
+"lon": 20.9965
+},
+{
+"name": "Kabaty",
+"district": "Ursynów",
+"lat": 52.13042,
+"lon": 21.0669
+},
+{
+"name": "Natolin",
+"district": "Ursynów",
+"lat": 52.13978,
+"lon": 21.05207
+},
+{
+"name": "Pyry",
+"district": "Ursynów",
+"lat": 52.12882,
+"lon": 21.01801
+},
+{
+"name": "Skarpa Powsińska",
+"district": "Ursynów",
+"lat": 52.10785,
+"lon": 21.09189
+},
+{
+"name": "Stary Imielin",
+"district": "Ursynów",
+"lat": 52.14515,
+"lon": 21.02769
+},
+{
+"name": "Stary Służew",
+"district": "Ursynów",
+"lat": 52.16584,
+"lon": 21.04286
+},
+{
+"name": "Teren Wydzielony Rezerwat \"Las Kabacki\"",
+"district": "Ursynów",
+"lat": 52.11833,
+"lon": 21.05652
+},
+{
+"name": "Ursynów Centrum",
+"district": "Ursynów",
+"lat": 52.15065,
+"lon": 21.04866
+},
+{
+"name": "Ursynów Północny",
+"district": "Ursynów",
+"lat": 52.15881,
+"lon": 21.02293
+},
+{
+"name": "Wyczółki",
+"district": "Ursynów",
+"lat": 52.15894,
+"lon": 20.9959
+},
+{
+"name": "Aleksandrów",
+"district": "Wawer",
+"lat": 52.17129,
+"lon": 21.24777
+},
+{
+"name": "Anin",
+"district": "Wawer",
+"lat": 52.21651,
+"lon": 21.1718
+},
+{
+"name": "Falenica",
+"district": "Wawer",
+"lat": 52.15845,
+"lon": 21.21207
+},
+{
+"name": "Las",
+"district": "Wawer",
+"lat": 52.2179,
+"lon": 21.11153
+},
+{
+"name": "Marysin Wawerski",
+"district": "Wawer",
+"lat": 52.23449,
+"lon": 21.16274
+},
+{
+"name": "Miedzeszyn",
+"district": "Wawer",
+"lat": 52.16821,
+"lon": 21.19233
+},
+{
+"name": "Międzylesie",
+"district": "Wawer",
+"lat": 52.20613,
+"lon": 21.18585
+},
+{
+"name": "Nadwiśle",
+"district": "Wawer",
+"lat": 52.16979,
+"lon": 21.15783
+},
+{
+"name": "Radość",
+"district": "Wawer",
+"lat": 52.18673,
+"lon": 21.19585
+},
+{
+"name": "Sadul",
+"district": "Wawer",
+"lat": 52.20954,
+"lon": 21.155
+},
+{
+"name": "Wawer",
+"district": "Wawer",
+"lat": 52.2226,
+"lon": 21.14526
+},
+{
+"name": "Zerzeń",
+"district": "Wawer",
+"lat": 52.20259,
+"lon": 21.13564
+},
+{
+"name": "Groszówka",
+"district": "Wesoła",
+"lat": 52.23803,
+"lon": 21.22447
+},
+{
+"name": "Plac Wojska Polskiego",
+"district": "Wesoła",
+"lat": 52.25954,
+"lon": 21.23629
+},
+{
+"name": "Stara Miłosna",
+"district": "Wesoła",
+"lat": 52.21326,
+"lon": 21.23653
+},
+{
+"name": "Wesoła-Centrum",
+"district": "Wesoła",
+"lat": 52.24957,
+"lon": 21.22128
+},
+{
+"name": "Wola Grzybowska",
+"district": "Wesoła",
+"lat": 52.24843,
+"lon": 21.24329
+},
+{
+"name": "Zielona-Grzybowa",
+"district": "Wesoła",
+"lat": 52.24231,
+"lon": 21.19431
+},
+{
+"name": "Błonia Wilanowskie",
+"district": "Wilanów",
+"lat": 52.15024,
+"lon": 21.07824
+},
+{
+"name": "Kępa Zawadowska",
+"district": "Wilanów",
+"lat": 52.14714,
+"lon": 21.14455
+},
+{
+"name": "Powsin",
+"district": "Wilanów",
+"lat": 52.12927,
+"lon": 21.10983
+},
+{
+"name": "Powsinek",
+"district": "Wilanów",
+"lat": 52.14844,
+"lon": 21.10537
+},
+{
+"name": "Wilanów Królewski",
+"district": "Wilanów",
+"lat": 52.16869,
+"lon": 21.09305
+},
+{
+"name": "Wilanów Niski",
+"district": "Wilanów",
+"lat": 52.17588,
+"lon": 21.07947
+},
+{
+"name": "Wilanów Wysoki",
+"district": "Wilanów",
+"lat": 52.17208,
+"lon": 21.07018
+},
+{
+"name": "Zawady",
+"district": "Wilanów",
+"lat": 52.17383,
+"lon": 21.11887
+},
+{
+"name": "Czyste",
+"district": "Wola",
+"lat": 52.2275,
+"lon": 20.97239
+},
+{
+"name": "Koło",
+"district": "Wola",
+"lat": 52.24704,
+"lon": 20.946
+},
+{
+"name": "Mirów",
+"district": "Wola",
+"lat": 52.23355,
+"lon": 20.99003
+},
+{
+"name": "Młynów",
+"district": "Wola",
+"lat": 52.24207,
+"lon": 20.96447
+},
+{
+"name": "Nowolipki",
+"district": "Wola",
+"lat": 52.24622,
+"lon": 20.98361
+},
+{
+"name": "Odolany",
+"district": "Wola",
+"lat": 52.22066,
+"lon": 20.94269
+},
+{
+"name": "Powązki",
+"district": "Wola",
+"lat": 52.24956,
+"lon": 20.97246
+},
+{
+"name": "Ulrychów",
+"district": "Wola",
+"lat": 52.23141,
+"lon": 20.93973
+},
+{
+"name": "Nowe Włochy",
+"district": "Włochy",
+"lat": 52.20784,
+"lon": 20.9018
+},
+{
+"name": "Okęcie",
+"district": "Włochy",
+"lat": 52.17882,
+"lon": 20.95981
+},
+{
+"name": "Opacz Wielka",
+"district": "Włochy",
+"lat": 52.17689,
+"lon": 20.92581
+},
+{
+"name": "Paluch",
+"district": "Włochy",
+"lat": 52.15257,
+"lon": 20.9715
+},
+{
+"name": "Raków",
+"district": "Włochy",
+"lat": 52.19555,
+"lon": 20.9499
+},
+{
+"name": "Salomea",
+"district": "Włochy",
+"lat": 52.19255,
+"lon": 20.92737
+},
+{
+"name": "Stare Włochy",
+"district": "Włochy",
+"lat": 52.20237,
+"lon": 20.91873
+},
+{
+"name": "Załuski",
+"district": "Włochy",
+"lat": 52.16736,
+"lon": 20.93994
+},
+{
+"name": "Muranów",
+"district": "Śródmieście",
+"lat": 52.2507,
+"lon": 20.99472
+},
+{
+"name": "Nowe Miasto",
+"district": "Śródmieście",
+"lat": 52.25479,
+"lon": 21.00703
+},
+{
+"name": "Powiśle",
+"district": "Śródmieście",
+"lat": 52.24106,
+"lon": 21.02697
+},
+{
+"name": "Solec",
+"district": "Śródmieście",
+"lat": 52.2294,
+"lon": 21.03722
+},
+{
+"name": "Stare Miasto",
+"district": "Śródmieście",
+"lat": 52.24999,
+"lon": 21.01379
+},
+{
+"name": "Ujazdów",
+"district": "Śródmieście",
+"lat": 52.2161,
+"lon": 21.0404
+},
+{
+"name": "Śródmieście Południowe",
+"district": "Śródmieście",
+"lat": 52.22148,
+"lon": 21.01472
+},
+{
+"name": "Śródmieście Północne",
+"district": "Śródmieście",
+"lat": 52.23726,
+"lon": 21.01003
+},
+{
+"name": "Marymont-Potok",
+"district": "Żoliborz",
+"lat": 52.27966,
+"lon": 20.99006
+},
+{
+"name": "Sady Żoliborskie",
+"district": "Żoliborz",
+"lat": 52.2643,
+"lon": 20.96647
+},
+{
+"name": "Stary Żoliborz",
+"district": "Żoliborz",
+"lat": 52.26787,
+"lon": 20.99086
+}
+]

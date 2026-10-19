@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_DB: commute_map
+      POSTGRES_USER: commute
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commute -d commute_map"]
+      interval: 5s
+      retries: 10
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://commute:${POSTGRES_PASSWORD}@db:5432/commute_map
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+    depends_on:
+      db:
+        condition: service_healthy
+  caddy:
+    image: caddy:2
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/srv:ro
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    depends_on: [api]
+configs:
+  caddyfile:
+    content: |
+      :80 {
+        handle /api/* {
+          reverse_proxy api:8766
+        }
+        handle {
+          root * /srv
+          file_server
+        }
+      }
+volumes:
+  pgdata:

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dojazdomat · dojazd × czynsz w Warszawie</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="style.css?v=20261019n">
+</head>
+<body>
+<div id="map" role="application" aria-label="Mapa Warszawy. Kliknij, aby przenieść biuro."></div>
+
+<!-- Pasek górny: biuro + tryb mapy -->
+<header id="topbar">
+  <div class="office">
+    <h1 id="start-title">Gdzie pracujesz?</h1>
+    <label for="search" class="office-lbl">Dojazd do:</label>
+    <input id="search" type="text" list="stop-list" autocomplete="off" spellcheck="false" placeholder="przystanek albo kliknij mapę" aria-describedby="search-msg">
+    <datalist id="stop-list"></datalist>
+  </div>
+  <p id="start-hint">Wpisz przystanek albo kliknij na mapie miejsce pracy. Policzymy dojazd z każdego miejsca w Warszawie i pokażemy, gdzie mieszkać najtaniej.</p>
+<div id="layers">
+  <button type="button" id="layers-btn" class="seg" aria-expanded="false" aria-controls="layers-menu">Warstwy</button>
+  <div id="layers-menu" hidden>
+    <label class="chk"><input type="checkbox" id="t-metro" checked> <span class="sw"><i style="background:#0000bb"></i><i style="background:#bb0000"></i></span> metro</label>
+    <label class="chk"><input type="checkbox" id="t-rail" checked> <span class="sw"><i style="background:#2e8ec8"></i><i style="background:#008800"></i></span> SKM i kolej</label>
+    <label class="chk"><input type="checkbox" id="t-tram"> <span class="sw"><i style="background:#e8a33d"></i></span> tramwaje</label>
+    <label class="chk"><input type="checkbox" id="t-bus"> <span class="sw thin"><i style="background:#7fa7cf"></i></span> autobusy</label>
+    <label class="chk"><input type="checkbox" id="t-hubs"> <span class="sw hub"></span> węzły przesiadkowe</label>
+    <label class="chk"><input type="checkbox" id="t-labels" checked> <span class="sw txt">Aa</span> nazwy osiedli</label>
+    <label class="chk"><input type="checkbox" id="t-overlay" checked> <span class="sw ramp"></span> kolory na mapie</label>
+  </div>
+</div>
+  <div id="search-msg" class="msg" role="status" aria-live="polite"></div>
+</header>
+
+<button type="button" id="results-btn" class="primary">Pokaż wyniki</button>
+
+<!-- Legenda: zawsze zgodna z aktywnym trybem -->
+<section id="legend-card" aria-label="Legenda">
+  <div class="modes" role="group" aria-label="Widok mapy">
+    <button type="button" class="seg" data-mode="commute" aria-pressed="false">dojazd</button>
+    <button type="button" class="seg" data-mode="rent" aria-pressed="false">czynsz</button>
+    <button type="button" class="seg" data-mode="value" aria-pressed="true">opłacalność</button>
+  </div>
+  <div id="readout" class="readout" aria-hidden="true"></div>
+  <div id="legend"></div>
+</section>
+
+<!-- Panel: desktop = prawa kolumna, mobile = dolny arkusz z 3 punktami zatrzymania -->
+<aside id="sheet" data-tab="rank" data-snap="peek" aria-label="Filtry i ranking osiedli">
+  <button type="button" id="grip" aria-label="Zmień wysokość panelu" aria-describedby="grip-state"><span class="grip-bar"></span></button>
+  <span id="grip-state" class="sr-only"></span>
+  <div class="sheet-head">
+    <div role="tablist" aria-label="Panel" id="tabs">
+      <button type="button" role="tab" id="tab-b-filters" class="tab only-mobile" aria-controls="tab-filters" data-tab="filters" aria-selected="false">Filtry</button>
+      <button type="button" role="tab" id="tab-b-rank" class="tab" aria-controls="tab-rank" data-tab="rank" aria-selected="true">Ranking</button>
+      <button type="button" role="tab" id="tab-b-chart" class="tab" aria-controls="tab-chart" data-tab="chart" aria-selected="false">Wykres</button>
+    </div>
+    <button type="button" id="collapse" class="link" aria-controls="sheet">zamknij</button>
+    <div id="count" class="count only-mobile" role="status" aria-live="polite"></div>
+  </div>
+
+  <div id="sheet-body">
+    <!-- Filtry: na desktopie osobna karta po lewej -->
+    <section id="tab-filters" role="tabpanel" aria-labelledby="tab-b-filters" class="filters">
+      <div class="f-head">
+        <h2>Filtry</h2>
+        <div id="count-d" class="count only-desktop" role="status" aria-live="polite"></div>
+        <button type="button" id="f-toggle" class="link only-desktop" aria-expanded="true" aria-controls="f-body">zwiń</button>
+      </div>
+      <div id="f-body">
+        <fieldset class="f-rooms">
+          <legend>Pokoje</legend>
+          <div class="chips" id="rooms">
+            <button type="button" class="seg" data-rooms="any" aria-pressed="true">dowolnie</button>
+            <button type="button" class="seg" data-rooms="1" aria-pressed="false">1</button>
+            <button type="button" class="seg" data-rooms="2" aria-pressed="false">2</button>
+            <button type="button" class="seg" data-rooms="3" aria-pressed="false">3</button>
+            <button type="button" class="seg" data-rooms="4" aria-pressed="false">4+</button>
+          </div>
+        </fieldset>
+        <div class="f-range">
+          <label for="budget">Budżet maks.</label><output id="budget-out" for="budget"></output>
+          <input type="range" id="budget">
+        </div>
+        <div class="f-range">
+          <label for="maxt">Dojazd maks.</label><output id="maxt-out" for="maxt"></output>
+          <input type="range" id="maxt" min="15" max="95" step="5" value="95">
+        </div>
+        <div id="f-actions"><button type="button" id="more-btn" class="link" aria-expanded="false" aria-controls="more">więcej filtrów</button>
+        <button type="button" id="reset" class="link">wyczyść filtry</button></div>
+        <div id="more" hidden>
+          <fieldset>
+            <legend>Miara czynszu</legend>
+            <div class="chips">
+              <button type="button" class="seg" data-metric="price" aria-pressed="true">cena / mies.</button>
+              <button type="button" class="seg" data-metric="ppm" aria-pressed="false">zł za m²</button>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Powierzchnia, m²</legend>
+            <div class="area">
+              <label class="sr-only" for="area-min">od</label><input id="area-min" type="number" inputmode="numeric" min="0" max="500" step="5" placeholder="od">
+              <span aria-hidden="true">–</span>
+              <label class="sr-only" for="area-max">do</label><input id="area-max" type="number" inputmode="numeric" min="0" max="500" step="5" placeholder="do">
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Udogodnienia (wszystkie wybrane)</legend>
+            <div class="chips" id="amenities"></div>
+            <div id="amenity-msg" class="hint"></div>
+          </fieldset>
+          <fieldset id="source-fs">
+            <legend>Portal</legend>
+            <div class="chips" id="source-row"></div>
+          </fieldset>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-rank" role="tabpanel" aria-labelledby="tab-b-rank" class="rank">
+      <div class="sortbar" role="group" aria-label="Sortowanie rankingu">
+        <span class="lbl">Sortuj:</span>
+        <button type="button" class="seg sm" data-sort="cost" aria-pressed="true" title="czynsz + czas dojazdu wyceniony stawką minimalną">koszt łączny</button>
+        <button type="button" class="seg sm" data-sort="commute" aria-pressed="false">dojazd</button>
+        <button type="button" class="seg sm" data-sort="rent" aria-pressed="false">czynsz</button>
+      </div>
+      <ol id="rank-list"></ol>
+      <p id="note" class="note"></p>
+    </section>
+
+    <section id="tab-chart" role="tabpanel" aria-labelledby="tab-b-chart" class="chart">
+      <svg id="scatter" viewBox="0 0 320 340" role="group" aria-label="Wykres: mediana czynszu osiedla a czas dojazdu, z granicą Pareto"></svg>
+      <div id="scatter-tip" class="tip" aria-live="polite">&nbsp;</div>
+      <p class="note">Linia przerywana: osiedla, w których nie da się mieć taniej przy krótszym dojeździe. Kliknij punkt, aby przejść na mapie.</p>
+    </section>
+  </div>
+</aside>
+
+<script src="vendor/leaflet.js"></script>
+<script src="app.js?v=20261019n"></script>
+</body>
+</html>

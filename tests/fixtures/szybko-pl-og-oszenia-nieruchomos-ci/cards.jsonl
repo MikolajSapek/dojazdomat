@@ -1,0 +1,3 @@
+{"id":"h1","nid":"100","type":"lokal-mieszkalny","lat":52.29,"lon":21.08,"price":2000,"area":24.0,"rooms":1,"district":"Targówek"}
+{"id":"h2","nid":"101","type":"pokoj","lat":52.19,"lon":20.98,"price":1500,"area":12.0,"rooms":3,"district":"Mokotów"}
+{"id":"h3","nid":"102","type":"lokal-mieszkalny","lat":52.19,"lon":20.98,"price":100,"area":40.0,"rooms":2,"district":"Mokotów"}

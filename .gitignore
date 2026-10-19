@@ -1,0 +1,10 @@
+data/raw/
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+*.log
+.env
+design/screens/
+web/screens/
+.DS_Store

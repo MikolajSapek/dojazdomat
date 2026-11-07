@@ -12,23 +12,23 @@ cd dojazdomat
 .venv/bin/python -m mcp_server --stdio            # stdio (lokalnie)
 ```
 
-Zmienne: `DOJAZDOMAT_DATA` (domyślnie `web/data`), `DOJAZDOMAT_RATE_PER_MIN` (domyślnie 60 zapytań/min/IP, nagłówek `CF-Connecting-IP`), `DOJAZDOMAT_ALLOWED_HOSTS` (lista po przecinku, np. `dojazdomat.sapcorp.eu`; włącza ochronę DNS-rebinding, domyślnie wyłączona).
+Zmienne: `DOJAZDOMAT_DATA` (domyślnie `web/data`), `DOJAZDOMAT_RATE_PER_MIN` (domyślnie 60 zapytań/min/IP, nagłówek `CF-Connecting-IP`), `DOJAZDOMAT_ALLOWED_HOSTS` (lista po przecinku, np. `dojazdomat.pl`; włącza ochronę DNS-rebinding, domyślnie wyłączona).
 
-Docker (z katalogu repo): `docker build -f mcp_server/Dockerfile -t dojazdomat-mcp . && docker run -p 8790:8790 dojazdomat-mcp`. Tunel Cloudflare: `dojazdomat.sapcorp.eu` -> `http://localhost:8790`.
+Docker (z katalogu repo): `docker build -f mcp_server/Dockerfile -t dojazdomat-mcp . && docker run -p 8790:8790 dojazdomat-mcp`. Tunel Cloudflare: `dojazdomat.pl` -> `http://localhost:8790`.
 
 ## Podłączenie
 
-**Claude (claude.ai):** Settings -> Connectors -> Add custom connector, URL `https://dojazdomat.sapcorp.eu/mcp`, bez uwierzytelniania.
+**Claude (claude.ai):** Settings -> Connectors -> Add custom connector, URL `https://dojazdomat.pl/mcp`, bez uwierzytelniania.
 
 **Claude Code:**
 ```bash
-claude mcp add --transport http dojazdomat https://dojazdomat.sapcorp.eu/mcp
+claude mcp add --transport http dojazdomat https://dojazdomat.pl/mcp
 ```
 
 **Codex** (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.dojazdomat]
-url = "https://dojazdomat.sapcorp.eu/mcp"
+url = "https://dojazdomat.pl/mcp"
 ```
 Wersja lokalna przez stdio:
 ```toml
@@ -38,7 +38,7 @@ args = ["-m", "mcp_server", "--stdio"]
 cwd = "/ścieżka/do/dojazdomat"
 ```
 
-**ChatGPT:** Settings -> Apps & Connectors -> Advanced -> Developer mode, potem Create (custom connector): URL `https://dojazdomat.sapcorp.eu/mcp`, uwierzytelnianie: brak.
+**ChatGPT:** Wtyczki -> Dodaj -> Dodaj niestandardowy serwer MCP: URL `https://dojazdomat.pl/mcp`, uwierzytelnianie: Brak uwierzytelniania.
 
 **Claude Desktop (stdio)**, `claude_desktop_config.json`:
 ```json

@@ -1,10 +1,18 @@
 # Dojazdomat
 
+![Dojazdomat: mapa dojazdu i czynszów w Warszawie](docs/img/hero.jpg)
+
 Mapa Warszawy, która pokazuje, gdzie opłaca się wynająć mieszkanie, jeśli pracujesz w konkretnym miejscu: czas dojazdu komunikacją miejską od drzwi do drzwi zestawiony z czynszami z ogłoszeń.
 
-Działa na https://dojazdomat.sapcorp.eu. Serwer MCP dla Claude i innych asystentów AI: `https://dojazdomat.sapcorp.eu/mcp` (opis w `mcp_server/README.md`).
+Działa na https://dojazdomat.pl. Serwer MCP dla Claude i innych asystentów AI: `https://dojazdomat.pl/mcp` (opis w `mcp_server/README.md`).
+
+![Mapa na dojazdomat.pl: biuro przy Rondzie ONZ, kolor to czas dojazdu komunikacją, odcień to czynsz](docs/img/mapa.jpg)
+
+*Mapa na dojazdomat.pl (listopad 2026). Kod w tym repozytorium to wersja z 19 października 2026, wygląd strony od tego czasu się zmienił.*
 
 ## Co jest w repozytorium
+
+![Jak płyną dane: rozkłady GTFS i OpenStreetMap, przetwarzanie w pipeline i PostGIS, wynik w mapie, API i serwerze MCP](docs/img/architektura.png)
 
 - `web/`: statyczny frontend (Leaflet, bez frameworka). Liczy izochrony w przeglądarce z gotowej macierzy czasów przejazdu.
 - `pipeline/transit/`: macierz czasów przystanek → przystanek z rozkładów GTFS (ZTM, SKM, metro, KM, WKD), średnia dla odjazdów 7:00–9:00 w dzień roboczy.
@@ -13,6 +21,18 @@ Działa na https://dojazdomat.sapcorp.eu. Serwer MCP dla Claude i innych asysten
 - `api/`: FastAPI (siatka dojazdu, mediany czynszu, ranking osiedli).
 - `mcp_server/`: serwer MCP zwracający tylko statystyki zbiorcze.
 - `CONTRACT.md`: format plików danych, `ARCHITECTURE.md`: architektura.
+
+## Serwer MCP
+
+Ten sam silnik odpowiada asystentom AI. Dodanie w Claude Code:
+
+```
+claude mcp add --transport http dojazdomat https://dojazdomat.pl/mcp
+```
+
+![claude mcp list: dojazdomat ze statusem Connected](docs/img/mcp.png)
+
+Instrukcje dla Claude, ChatGPT, Cursor, VS Code i Codex: https://dojazdomat.pl/serwer-mcp.html
 
 ## Czego tu nie ma
 

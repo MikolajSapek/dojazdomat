@@ -32,7 +32,7 @@ claude mcp add --transport http dojazdomat https://dojazdomat.pl/mcp
 
 ![claude mcp list: dojazdomat ze statusem Connected](docs/img/mcp.png)
 
-Instrukcje dla Claude, ChatGPT, Cursor, VS Code i Codex: https://dojazdomat.pl/serwer-mcp.html
+Instrukcje dla Claude, ChatGPT, Cursor, VS Code i Codex: https://dojazdomat.pl/serwer-mcp
 
 ## Czego tu nie ma
 

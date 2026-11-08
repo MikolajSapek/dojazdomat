@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.MikolajSapek/dojazdomat",
+  "title": "Dojazdomat",
+  "description": "Warsaw commute by transit, bike, walk or car plus rent medians: rank, compare, trend areas.",
+  "websiteUrl": "https://dojazdomat.pl/o-projekcie",
+  "version": "1.1.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://dojazdomat.pl/mcp"
+    }
+  ]
+}

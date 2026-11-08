@@ -1,0 +1,433 @@
+{
+ "_": "City settings: the one source of everything specific to this city (pipeline/city.py loads it). model = the city part of web/model-constants.json, kept equal by tests/test_city_config.py until each city gets its own constants file (MULTI-CITY phase 3). Lists (municipalities, transit.feeds, portal searches) so a metro area of several towns fits the same schema.",
+ "slug": "warszawa",
+ "nightly": true,
+ "paths": {
+  "raw": "data/raw",
+  "web": "web/data",
+  "streetExtent": "pipeline/geo/street-extent.json"
+ },
+ "region": "mazowieckie",
+ "name": {
+  "nom": "Warszawa",
+  "gen": "Warszawy",
+  "loc": "Warszawie",
+  "en": "Warsaw"
+ },
+ "municipalities": [
+  "Warszawa"
+ ],
+ "outsideLabel": "Okolice",
+ "mDeg": {
+  "lat": 111000,
+  "lon": 68500
+ },
+ "osm": {
+  "areaName": "Warszawa",
+  "adminLevel": "6",
+  "hoodLevels": "9|10",
+  "fetchBbox": [
+   20.84,
+   52.08,
+   21.29,
+   52.38
+  ],
+  "cityBbox": [
+   52.09,
+   52.37,
+   20.85,
+   21.28
+  ]
+ },
+ "model": {
+  "grid": {
+   "lat0": 51.98,
+   "lat1": 52.48,
+   "lon0": 20.62,
+   "lon1": 21.48,
+   "dlat": 0.001,
+   "dlon": 0.0016,
+   "mLat": 110540,
+   "mLonEquator": 111320,
+   "refLat": 52.23
+  },
+  "car": {
+   "mPerHour": 19400,
+   "circuity": 1.35
+  },
+  "walk": {
+   "mPerMin": 80,
+   "circuity": [
+    [
+     212,
+     1.52
+    ],
+    [
+     424,
+     1.42
+    ],
+    [
+     775,
+     1.357
+    ],
+    [
+     1414,
+     1.304
+    ],
+    [
+     2449,
+     1.27
+    ],
+    [
+     3674,
+     1.251
+    ],
+    [
+     5196,
+     1.24
+    ],
+    [
+     7348,
+     1.222
+    ],
+    [
+     10392,
+     1.2
+    ]
+   ]
+  },
+  "bike": {
+   "mPerMin": 250,
+   "addMin": 2,
+   "speeds": {
+    "infra": 283,
+    "calm": 250,
+    "busy": 250,
+    "track": 200,
+    "path": 150
+   },
+   "circuity": [
+    [
+     212,
+     1.688
+    ],
+    [
+     424,
+     1.595
+    ],
+    [
+     775,
+     1.478
+    ],
+    [
+     1414,
+     1.379
+    ],
+    [
+     2449,
+     1.32
+    ],
+    [
+     3674,
+     1.27
+    ],
+    [
+     5196,
+     1.239
+    ],
+    [
+     7348,
+     1.202
+    ],
+    [
+     10392,
+     1.168
+    ]
+   ]
+  },
+  "cost": {
+   "wagePerHour": 31.4
+  },
+  "map": {
+   "center": [
+    21.01,
+    52.235
+   ],
+   "zoom": 12,
+   "outside": "okolice Warszawy"
+  }
+ },
+ "powiaty": [
+  "piaseczynski",
+  "pruszkowski",
+  "wolominski",
+  "legionowski",
+  "warszawski-zachodni",
+  "otwocki",
+  "grodziski",
+  "nowodworski"
+ ],
+ "regionTowns": [
+  [
+   "Piaseczno",
+   52.07473,
+   21.02708,
+   336137
+  ],
+  [
+   "Pruszków",
+   52.16261,
+   20.80801,
+   2907539
+  ],
+  [
+   "Ząbki",
+   52.29233,
+   21.11469,
+   1994195
+  ],
+  [
+   "Marki",
+   52.32546,
+   21.10546,
+   1994192
+  ],
+  [
+   "Łomianki",
+   52.33552,
+   20.89501,
+   336313
+  ],
+  [
+   "Legionowo",
+   52.39522,
+   20.93083,
+   1753824
+  ],
+  [
+   "Józefów",
+   52.137,
+   21.235,
+   336207
+  ],
+  [
+   "Piastów",
+   52.18125,
+   20.84159,
+   336303
+  ],
+  [
+   "Kobyłka",
+   52.33997,
+   21.19054,
+   1994191
+  ],
+  [
+   "Zielonka",
+   52.3036,
+   21.1602,
+   1994190
+  ],
+  [
+   "Lesznowola",
+   52.08896,
+   20.94217,
+   2415879
+  ],
+  [
+   "Konstancin-Jeziorna",
+   52.08347,
+   21.1208,
+   336138
+  ],
+  [
+   "Otwock",
+   52.1053,
+   21.2617,
+   336206
+  ],
+  [
+   "Wołomin",
+   52.34686,
+   21.24201,
+   1994189
+  ],
+  [
+   "Grodzisk Mazowiecki",
+   52.10662,
+   20.63134,
+   336415
+  ],
+  [
+   "Nowy Dwór Mazowiecki",
+   52.43417,
+   20.70611,
+   336328
+  ]
+ ],
+ "hubStops": [
+  "Rondo ONZ",
+  "Rondo Daszyńskiego",
+  "Centrum",
+  "Warszawa Centralna",
+  "Domaniewska",
+  "Metro Wilanowska",
+  "Metro Politechnika",
+  "Uniwersytet"
+ ],
+ "hub": {
+  "default": {
+   "slug": "centrum",
+   "to": "Centrum"
+  },
+  "compare": [
+   "centrum",
+   "rondo-onz"
+  ],
+  "og": "Rondo ONZ"
+ },
+ "transit": {
+  "feeds": [
+   {
+    "name": "warsaw",
+    "url": "https://mkuran.pl/gtfs/warsaw.zip",
+    "role": "main"
+   },
+   {
+    "name": "wkd",
+    "url": "https://mkuran.pl/gtfs/wkd.zip",
+    "role": "rail_local",
+    "label": "WKD"
+   },
+   {
+    "name": "polish_trains",
+    "url": "https://mkuran.pl/gtfs/polish_trains.zip",
+    "role": "rail_regional",
+    "label": "KM",
+    "agency": "KM"
+   }
+  ],
+  "outBbox": [
+   51.98,
+   52.48,
+   20.62,
+   21.48
+  ],
+  "routeBbox": [
+   51.9,
+   52.6,
+   20.45,
+   21.75
+  ],
+  "maxN": 3200,
+  "colors": {
+   "M1": "#0000bb",
+   "M2": "#bb0000",
+   "tram": "#e8a33d",
+   "bus": "#7fa7cf",
+   "KM": "#008800",
+   "WKD": "#990099"
+  },
+  "nameStrip": "warszawa",
+  "lineGroups": [
+   [
+    "metro",
+    "Metro"
+   ],
+   [
+    "skm",
+    "SKM i WKD"
+   ],
+   [
+    "tram",
+    "Tramwaje"
+   ]
+  ],
+  "checkPairs": [
+   [
+    "Centrum",
+    "Metro Kabaty"
+   ],
+   [
+    "Metro Wilanowska",
+    "Metro Młociny"
+   ],
+   [
+    "Warszawa Centralna",
+    "Warszawa Lotnisko Chopina"
+   ],
+   [
+    "pl. Zbawiciela",
+    "Rondo ONZ"
+   ],
+   [
+    "Warszawa Śródmieście",
+    "Warszawa Wschodnia"
+   ],
+   [
+    "Metro Politechnika",
+    "Metro Ratusz Arsenał"
+   ],
+   [
+    "Dw. Gdański",
+    "Metro Bródno"
+   ],
+   [
+    "Warszawa Zachodnia",
+    "Warszawa Ursus"
+   ],
+   [
+    "Metro Kabaty",
+    "Centrum"
+   ],
+   [
+    "Metro Bemowo",
+    "Metro Trocka"
+   ]
+  ],
+  "sources": "ZTM Warszawa, SKM, Koleje Mazowieckie, WKD"
+ },
+ "portals": {
+  "olx": {
+   "regionId": 2,
+   "cityId": 17871,
+   "distance": 30
+  },
+  "gratka": {
+   "locationId": "84639",
+   "markersBbox": [
+    52.09785,
+    20.851688,
+    52.368153,
+    21.271151
+   ]
+  },
+  "sprzedajemy": {
+   "placeholder": [
+    52.2297,
+    21.0122
+   ]
+  },
+  "nieruchomosciOnline": {
+   "towns": [
+    "piaseczno",
+    "pruszkow",
+    "zabki",
+    "marki",
+    "lomianki",
+    "legionowo",
+    "jozefow",
+    "piastow",
+    "kobylka",
+    "zielonka",
+    "lesznowola",
+    "konstancin-jeziorna",
+    "otwock",
+    "wolomin",
+    "grodzisk-mazowiecki",
+    "nowy-dwor-mazowiecki"
+   ]
+  }
+ },
+ "_regionTowns": "regionTowns: [name, label lat, label lon, OSM relation id of its gmina boundary (admin_level 7) = the area its median counts]"
+}

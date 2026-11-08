@@ -2,16 +2,16 @@
 from collections import defaultdict
 from statistics import median
 
-from .engine import LAT0, LON0, M_LAT, M_LON
+from .engine import K, LAT0, LON0, M_LAT, M_LON
 
-BIN_M, BIN_MIN, HOOD_MIN = 350, 3, 5
+BIN_M, BIN_MIN, HOOD_MIN = K["bins"]["binM"], K["medianMinN"], K["medianMinN"]  # one minimum for bins and hoods (D2)
 _LAT = "ST_Y(ST_Transform(a.geom, 4326))"
 _LON = "ST_X(ST_Transform(a.geom, 4326))"
 
 
 def _where(f):
     """-> (sql fragment, params, value expression). Only fixed fragments are interpolated."""
-    w, p = ["a.coord_precision < 2"], []
+    w, p = ["a.coord_precision < 2", f"(a.flags & {int(K['feeKnownBit'])}) <> 0"], []  # the median rule, as web/rent.js inMedian
     if f["rooms"] is not None:
         w.append("a.rooms = %s"); p.append(f["rooms"])
     if f["min_area"] is not None:

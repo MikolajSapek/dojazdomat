@@ -1,14 +1,16 @@
 # Dojazdomat MCP
 
-Zdalny serwer MCP dla Dojazdomat (Warszawa: dojazd x czynsz). Narzędzia: `find_place`, `commute_time`, `rent_stats`, `rank_neighborhoods`, `dataset_info`. Zwraca wyłącznie agregaty (mediana, p25, p75, liczebność z grup >= 5 ogłoszeń); nigdy pojedynczych ogłoszeń ani ich współrzędnych.
+Zdalny serwer MCP dla Dojazdomat (Warszawa: dojazd x czynsz). Narzędzia: `find_place`, `commute_time`, `rent_stats`, `rank_neighborhoods`, `rank_for_two`, `compare_neighborhoods`, `reachable_neighborhoods`, `rent_trend`, `dataset_info`. Czasy dojazdu z domu do pracy w trybach `transit`, `bike`, `walk`, `car` (parametr `mode`, te same minuty co mapa); `rent_trend` czyta `web/data/rent-history.json` (`pipeline/rent_history.py`, co noc). Zwraca wyłącznie agregaty (mediana, p25, p75, liczebność; cena dopiero od 20 ogłoszeń, p25 i p75 od 10, promień tylko ze stałych kroków); nigdy pojedynczych ogłoszeń ani ich współrzędnych.
+
+Dane i reguły jak na mapie (`offers.json`, próg 20 ogłoszeń do rankingu osiedla); `rank_neighborhoods` ma parametr `sort` (`value`, `best`, `commute`, `rent`).
 
 Zalecany przepływ: `find_place` -> `rank_neighborhoods` -> `rent_stats`.
 
 ## Uruchomienie
 
 ```bash
-cd dojazdomat
-.venv/bin/python -m mcp_server --port 8790        # HTTP: http://0.0.0.0:8790/mcp
+cd <repo>
+.venv/bin/python -m mcp_server --port 8790        # HTTP: http://127.0.0.1:8790/mcp (host: --host or HOST)
 .venv/bin/python -m mcp_server --stdio            # stdio (lokalnie)
 ```
 
@@ -33,19 +35,19 @@ url = "https://dojazdomat.pl/mcp"
 Wersja lokalna przez stdio:
 ```toml
 [mcp_servers.dojazdomat]
-command = "/ścieżka/do/dojazdomat/.venv/bin/python"
+command = "<repo>/.venv/bin/python"
 args = ["-m", "mcp_server", "--stdio"]
-cwd = "/ścieżka/do/dojazdomat"
+cwd = "<repo>"
 ```
 
-**ChatGPT:** Wtyczki -> Dodaj -> Dodaj niestandardowy serwer MCP: URL `https://dojazdomat.pl/mcp`, uwierzytelnianie: Brak uwierzytelniania.
+**ChatGPT:** Settings -> Apps & Connectors -> Advanced -> Developer mode, potem Create (custom connector): URL `https://dojazdomat.pl/mcp`, uwierzytelnianie: brak.
 
 **Claude Desktop (stdio)**, `claude_desktop_config.json`:
 ```json
 {"mcpServers": {"dojazdomat": {
-  "command": "/ścieżka/do/dojazdomat/.venv/bin/python",
+  "command": "<repo>/.venv/bin/python",
   "args": ["-m", "mcp_server", "--stdio"],
-  "cwd": "/ścieżka/do/dojazdomat"}}}
+  "cwd": "<repo>"}}}
 ```
 
 ## Dane i zastrzeżenia

@@ -1,12 +1,15 @@
 """web/data/offers.json (and archived copies) -> web/data/rent-history.json: one median snapshot per day for the MCP rent_trend tool.
 
 A snapshot is mcp_server.core.snapshot: the map's median rows, pin cap and >= medianMinN rule, for the city, each district and each
-neighborhood (all rooms and 1/2/3/4+). Days are keyed by offers.json asOf, so rerunning a day replaces it.
+neighborhood (all rooms and 1/2/3/4+). Days are keyed by the run date (the archive file name, or today), not offers.json asOf: asOf is the oldest portal date
+(OLX is exported by hand), so it can stay the same for several nights. Rerunning a day replaces it.
 Usage:
   python -I pipeline/rent_history.py                      add today's web/data/offers.json (refresh.sh runs this after the merge)
   python -I pipeline/rent_history.py --archive DIR        also add every listings-YYYY-MM-DD.tar.gz in DIR that holds an offers.json
 """
 import argparse
+import datetime
+import re
 import json
 import sys
 import tarfile
@@ -33,24 +36,25 @@ def archived(archive_dir):
             member = next((m for m in t.getmembers() if m.name.endswith("offers.json") and m.isfile()), None)
             if member is None:
                 continue
+            day = re.search(r"\d{4}-\d{2}-\d{2}", tar.name).group(0)
             with tempfile.TemporaryDirectory() as d:
                 (Path(d) / "offers.json").write_bytes(t.extractfile(member).read())
-                yield d
+                yield day, d
 
 
-def build(data, archive=None):
+def build(data, archive=None, today=None):
     data = Path(data)
     hoods = json.loads((data / "neighborhoods.json").read_text())
     hist = load(data / HISTORY_FILE)
     days = {d["date"]: d for d in hist["days"]}
-    for d in (archived(archive) if archive else ()):
+    for day, d in (archived(archive) if archive else ()):
         try:
-            snap = snapshot(d, hoods)
+            snap = {**snapshot(d, hoods), "date": day}
         except ValueError as e:  # an offers.json from before the district/neighborhood columns: no comparable medians
             print(f"rent-history: skip archived day ({e})", file=sys.stderr)
             continue
         days[snap["date"]] = snap
-    snap = snapshot(data, hoods)
+    snap = {**snapshot(data, hoods), "date": today or datetime.date.today().isoformat()}
     days[snap["date"]] = snap
     ordered = [days[k] for k in sorted(days)]
     names = {"city": [city.load()["name"]["nom"]], "district": sorted({n for d in ordered for n in d["district"]}),

@@ -2,7 +2,7 @@
 
 Zdalny serwer MCP dla Dojazdomat (Warszawa: dojazd x czynsz). Narzędzia: `find_place`, `commute_time`, `rent_stats`, `rank_neighborhoods`, `rank_for_two`, `compare_neighborhoods`, `reachable_neighborhoods`, `rent_trend`, `dataset_info`. Czasy dojazdu z domu do pracy w trybach `transit`, `bike`, `walk`, `car` (parametr `mode`, te same minuty co mapa); `rent_trend` czyta `web/data/rent-history.json` (`pipeline/rent_history.py`, co noc). Zwraca wyłącznie agregaty (mediana, p25, p75, liczebność; cena dopiero od 20 ogłoszeń, p25 i p75 od 10, promień tylko ze stałych kroków); nigdy pojedynczych ogłoszeń ani ich współrzędnych.
 
-Dane i reguły jak na mapie (`offers.json`, próg 20 ogłoszeń do rankingu osiedla); `rank_neighborhoods` ma parametr `sort` (`value`, `best`, `commute`, `rent`).
+Dane i reguły jak na mapie (`offers.json`, próg 20 ogłoszeń do rankingu osiedla); `rank_neighborhoods` ma parametr `sort` (`value`, `best`, `commute`, `rent`; domyślnie `best` dla `measure=total`, `value` dla `per_m2`), a limity minut to 1-90 (jak `stopCut` na mapie).
 
 Zalecany przepływ: `find_place` -> `rank_neighborhoods` -> `rent_stats`.
 

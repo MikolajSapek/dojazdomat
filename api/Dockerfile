@@ -4,7 +4,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY api ./api
-COPY web/data ./web/data
+COPY mcp_server/__init__.py mcp_server/core.py ./mcp_server/
+COPY db ./db
+COPY web/model-constants.json ./web/model-constants.json
+COPY pipeline/city.py ./pipeline/city.py
+COPY cities ./cities
+# web/data is bind-mounted by compose
 ENV DATA_DIR=/app/web/data
 EXPOSE 8766
 USER nobody

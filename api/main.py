@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse, Response
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
-from mcp_server.core import Dojazdomat, _fold
+from mcp_server.core import Dojazdomat, InputError, _fold
 
 from . import car as carmod
 from . import engine as eng
@@ -92,12 +92,13 @@ class RentQuery(Origin):
 
 class HoodsQuery(Origin):
     """Same inputs as the MCP tool rank_neighborhoods (lat/lon = office)."""
-    max_commute_min: int | None = Field(None, ge=1, le=120)
+    max_commute_min: int | None = Field(None, ge=1, le=90)
     max_rent: float | None = Field(None, gt=0)
     rooms: int | None = Field(None, ge=1, le=4)
     measure: Measure = "total"
     limit: int = Field(10, ge=1, le=50)
-    sort: Literal["value", "best", "commute", "rent"] = "best"
+    sort: Literal["value", "best", "commute", "rent"] | None = None  # None: best for total, value for per_m2
+    mode: Literal["transit", "bike", "walk", "car"] = "transit"
 
 
 OriginQ = Annotated[Origin, Query()]
@@ -376,7 +377,7 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
         dj = dojazdomat()
         try:
             return envelope(dj.rent_stats(q.lat, q.lon, q.radius_m, q.rooms, q.min_area, q.max_area, q.measure), headers=API_CACHE)
-        except ValueError as e:
+        except InputError as e:
             raise ApiError(422, str(e)) from None
 
     @app.get("/api/neighborhoods")
@@ -384,8 +385,8 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
         """= MCP rank_neighborhoods, the map's ranking for an office at lat/lon."""
         dj = dojazdomat()
         try:
-            return envelope(dj.rank_neighborhoods(q.lat, q.lon, q.max_commute_min, q.max_rent, q.rooms, q.measure, q.limit, q.sort), headers=API_CACHE)
-        except ValueError as e:
+            return envelope(dj.rank_neighborhoods(q.lat, q.lon, q.max_commute_min, q.max_rent, q.rooms, q.measure, q.limit, q.sort, q.mode), headers=API_CACHE)
+        except InputError as e:
             raise ApiError(422, str(e)) from None
 
     @app.get("/api/stops")

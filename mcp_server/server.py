@@ -10,6 +10,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Annotated, Any, Literal
 
+import anyio
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
@@ -18,7 +19,7 @@ from pydantic import Field
 from api import engine as eng
 from pipeline import city
 
-from .core import Dojazdomat
+from .core import Dojazdomat, InputError
 
 log = logging.getLogger("mcp_server")
 C = city.load()
@@ -151,12 +152,13 @@ class DiscoverShim:
 
 
 def _safe(fn):
-    """Validation errors reach the client verbatim; anything else is logged and hidden."""
+    """Validation errors reach the client verbatim; anything else is logged and hidden. The tool body runs in a worker thread:
+    mcp calls a sync tool on the event loop, so one slow call (first car graph load ~1 s) would stall every other client."""
     @functools.wraps(fn)
-    def run(*a, **k):
+    async def run(*a, **k):
         try:
-            return fn(*a, **k)
-        except ValueError as e:
+            return await anyio.to_thread.run_sync(functools.partial(fn, *a, **k))
+        except InputError as e:
             raise ValueError(str(e)) from None
         except Exception:
             log.exception("tool %s failed", fn.__name__)
@@ -164,12 +166,15 @@ def _safe(fn):
     return run
 
 
+RETRY_AFTER_FAILED_RELOAD = 60.0  # s
+
+
 class Reloading:
     """Dojazdomat that rebuilds itself when a data file changes (refresh.sh rsyncs web/data under a live server)."""
 
     def __init__(self, data_dir=None):
         self.dj, self.lock = Dojazdomat(data_dir), Lock()
-        self.sig = self._sig()
+        self.sig, self.retry_at = self._sig(), 0.0
 
     def _sig(self):
         d = self.dj.data_dir
@@ -178,10 +183,11 @@ class Reloading:
     def __getattr__(self, name):
         with self.lock:
             sig = self._sig()
-            if sig != self.sig:
+            if sig != self.sig and time.monotonic() >= self.retry_at:
                 try:
                     self.dj, self.sig = Dojazdomat(self.dj.data_dir), sig
-                except Exception:  # half-written sync: keep serving the old data, retry on the next call
+                except Exception:  # half-written sync: keep serving the old data, retry after a pause (as api/main.py retry_at)
+                    self.retry_at = time.monotonic() + RETRY_AFTER_FAILED_RELOAD
                     log.exception("data reload failed; serving previous data")
             return getattr(self.dj, name)
 
@@ -219,7 +225,7 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
     def commute_time(from_lat: Lat, from_lon: Lon, to_lat: Lat, to_lon: Lon, mode: Mode = "transit") -> dict[str, Any]:
         """Minutes from home (from) to work (to), same model as the Dojazdomat map (czas dojazdu z domu do pracy). transit:
         door to door by public transport plus walking, weekday 7-9 average, with the nearest stops at both ends; bike, walk: OpenStreetMap
-        paths (bike +2 min); car: rush-hour driving. minutes is null when unreachable (over ~2 h)."""
+        paths (bike +2 min); car: rush-hour driving. minutes is null when unreachable (over 90 min)."""
         return dj.commute_time(from_lat, from_lon, to_lat, to_lon, mode)
 
     @mcp.tool(annotations=RO)
@@ -236,11 +242,11 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
     @_safe
     @_city_doc
     def rank_neighborhoods(office_lat: Lat, office_lon: Lon,
-                           max_commute_min: Annotated[int | None, Field(description="Max commute minutes", ge=1, le=120)] = None,
+                           max_commute_min: Annotated[int | None, Field(description="Max commute minutes", ge=1, le=90)] = None,
                            max_rent: Annotated[float | None, Field(description="Max neighborhood median rent (PLN, or PLN/m2 if measure=per_m2)", gt=0)] = None,
                            rooms: Rooms = None, measure: Measure = "total",
                            limit: Annotated[int, Field(ge=1, le=50)] = 10,
-                           sort: Annotated[Literal["value", "best", "commute", "rent"], Field(description="best = rent + commute valued at the minimum wage (default, the map's order, total measure only); value = score vs typical rent in the same commute band; commute = fastest first; rent = cheapest first")] = "best",
+                           sort: Annotated[Literal["value", "best", "commute", "rent"] | None, Field(description="best = rent + commute valued at the minimum wage (default for measure=total, the map's order); value (default for per_m2) = score vs typical rent in the same commute band; commute = fastest first; rent = cheapest first")] = None,
                            mode: Mode = "transit") -> dict[str, Any]:
         """Rank {city} neighborhoods for a workplace: median rent, commute minutes, value score (rent vs typical rent in the same
         commute band, like the map), monthly_cost (rent + commute valued at the minimum wage) and Pareto flag (no neighborhood both faster and cheaper)
@@ -251,7 +257,7 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
     @_safe
     @_city_doc
     def rank_for_two(a_lat: Lat, a_lon: Lon, b_lat: Lat, b_lon: Lon, mode_a: Mode = "transit", mode_b: Mode = "transit",
-                     max_commute_min: Annotated[int | None, Field(description="Max commute minutes for each person", ge=1, le=120)] = None,
+                     max_commute_min: Annotated[int | None, Field(description="Max commute minutes for each person", ge=1, le=90)] = None,
                      max_rent: Annotated[float | None, Field(description="Max neighborhood median rent, PLN/month", gt=0)] = None,
                      rooms: Rooms = None, limit: Annotated[int, Field(ge=1, le=50)] = 10,
                      sort: Annotated[Literal["best", "fair", "rent"], Field(description="best = rent + both commutes valued at the minimum wage (default); fair = shortest longer commute first; rent = cheapest first")] = "best") -> dict[str, Any]:
@@ -273,7 +279,7 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
 
     @mcp.tool(annotations=RO)
     @_safe
-    def reachable_neighborhoods(lat: Lat, lon: Lon, max_minutes: Annotated[int, Field(description="Max minutes from home to this point", ge=1, le=120)] = 30,
+    def reachable_neighborhoods(lat: Lat, lon: Lon, max_minutes: Annotated[int, Field(description="Max minutes from home to this point", ge=1, le=90)] = 30,
                                 mode: Mode = "transit", rooms: Rooms = None,
                                 limit: Annotated[int, Field(ge=1, le=100)] = 50) -> dict[str, Any]:
         """Every neighborhood from which this point (e.g. the office) is reached within max_minutes, fastest first (zasieg w N minut).

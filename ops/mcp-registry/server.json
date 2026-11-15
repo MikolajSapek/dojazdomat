@@ -4,7 +4,7 @@
   "title": "Dojazdomat",
   "description": "Warsaw commute by transit, bike, walk or car plus rent medians: rank, compare, trend areas.",
   "websiteUrl": "https://dojazdomat.pl/o-projekcie",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "remotes": [
     {
       "type": "streamable-http",

@@ -5,6 +5,7 @@ import os
 import unicodedata
 from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 from statistics import median
 
 import numpy as np
@@ -22,6 +23,7 @@ FEE_KNOWN = eng.K["feeKnownBit"]  # median rows: prec < 2 and the full cost know
 WAGE_PER_MIN = eng.K["cost"]["wagePerHour"] / 60
 TRIPS_PER_MONTH = eng.K["cost"]["tripsPerMonth"]
 SORTS = ("value", "best", "commute", "rent")
+AREA_STEP = 5  # m2, rent_stats differencing guard
 PIN_CAP = eng.K["stackedPin"] - 1  # most rows of one identical pin (5 decimals) a hood median takes; web/rent.js computeHoodMed
 HOOD_R = eng.K["hoodR"]  # metres; web/model-constants.json is the one source (web/app.js reads it too)
 ROUND_PLN, SNAP_DEG = 50, 0.001   # output rounding; query-centre grid (~111 m)
@@ -56,23 +58,27 @@ def _fold(s):
     return "".join(c for c in s if not unicodedata.combining(c))
 
 
+class InputError(ValueError):
+    """A caller's bad input: its message is safe to show. Any other ValueError is internal."""
+
+
 def _check_point(lat, lon, name=""):
     if not (isinstance(lat, (int, float)) and isinstance(lon, (int, float))) or math.isnan(lat) or math.isnan(lon):
-        raise ValueError(f"{name}lat/lon must be numbers")
+        raise InputError(f"{name}lat/lon must be numbers")
     if not eng.in_bbox(lat, lon):
-        raise ValueError(f"{name}point outside {EN} bbox (lat {eng.LAT0}-{eng.LAT1}, lon {eng.LON0}-{eng.LON1})")
+        raise InputError(f"{name}point outside {EN} bbox (lat {eng.LAT0}-{eng.LAT1}, lon {eng.LON0}-{eng.LON1})")
 
 
 def _check_filters(rooms, min_area, max_area, measure):
     if measure not in ("total", "per_m2"):
-        raise ValueError("measure must be 'total' or 'per_m2'")
+        raise InputError("measure must be 'total' or 'per_m2'")
     if rooms is not None and rooms not in (1, 2, 3, 4):
-        raise ValueError("rooms must be 1, 2, 3 or 4 (4 = 4+)")
+        raise InputError("rooms must be 1, 2, 3 or 4 (4 = 4+)")
     for a in (min_area, max_area):
         if a is not None and not 0 <= a <= 1000:
-            raise ValueError("area must be between 0 and 1000 m2")
+            raise InputError("area must be between 0 and 1000 m2")
     if min_area is not None and max_area is not None and min_area > max_area:
-        raise ValueError("min_area must be <= max_area")
+        raise InputError("min_area must be <= max_area")
 
 
 def load_offers(data_dir):
@@ -126,7 +132,7 @@ class Dojazdomat:
         self._set_rows(rows)
         self._stop_fold = [_fold(s["name"]) for s in stops]
         self._hood_fold = [_fold(h["name"]) for h in self.hoods]
-        self._grids = OrderedDict()
+        self._grids, self._grid_lock = OrderedDict(), Lock()  # API serves from a threadpool
         self._routers = {}
 
     def _set_rows(self, rows):
@@ -144,15 +150,19 @@ class Dojazdomat:
         plus addMin; a walk/bike cell outside the graph and an office off every graph fall back to the straight-line formula,
         as the map does when /api/<mode> has no answer."""
         if mode not in MODES:
-            raise ValueError(f"mode must be one of {', '.join(MODES)}")
+            raise InputError(f"mode must be one of {', '.join(MODES)}")
         key = (mode, round(lat, 5), round(lon, 5))
-        if key in self._grids:
-            self._grids.move_to_end(key)
-        else:
-            self._grids[key] = self.engine.grid(lat, lon) if mode == "transit" else self._routed_grid(lat, lon, mode)
-            if len(self._grids) > 16:
+        with self._grid_lock:
+            g = self._grids.get(key)
+            if g is not None:
+                self._grids.move_to_end(key)
+                return g
+        g = self.engine.grid(lat, lon) if mode == "transit" else self._routed_grid(lat, lon, mode)
+        with self._grid_lock:
+            self._grids[key] = g
+            while len(self._grids) > 16:
                 self._grids.popitem(last=False)
-        return self._grids[key]
+        return g
 
     def _router(self, mode):
         if mode not in self._routers:  # lazy: a graph loads on its first query (walk ~8 MB npz)
@@ -192,7 +202,7 @@ class Dojazdomat:
         hits = [h for h, hf in zip(self.hoods, self._hood_fold) if f and f in hf]
         if len(hits) == 1:
             return hits[0]
-        raise ValueError(f"unknown neighborhood {name!r}" + (f"; did you mean: {', '.join(h['name'] for h in hits[:5])}" if hits else "; use find_place"))
+        raise InputError(f"unknown neighborhood {name!r}" + (f"; did you mean: {', '.join(h['name'] for h in hits[:5])}" if hits else "; use find_place"))
 
     def _hood_stats(self, h, mask, vals, measure):
         v = vals[self.hood_mask(h, mask)]
@@ -249,7 +259,7 @@ class Dojazdomat:
     def find_place(self, query, limit=10):
         q = _fold(query.strip())
         if len(q) < 2 or len(query) > 60:
-            raise ValueError("query must be 2-60 characters")
+            raise InputError("query must be 2-60 characters")
         limit = max(1, min(int(limit), 25))
 
         def rank(folded):
@@ -284,9 +294,11 @@ class Dojazdomat:
         # ask for is finite and each is a published figure; the grid alone does not stop r=768/770/772 from isolating one ad.
         lat, lon = _snap(lat), _snap(lon)
         if not RADIUS[0] <= radius_m <= RADIUS[1]:
-            raise ValueError(f"radius_m must be {RADIUS[0]}-{RADIUS[1]}")
+            raise InputError(f"radius_m must be {RADIUS[0]}-{RADIUS[1]}")
         radius_m = min(RADIUS_STEPS, key=lambda s: (abs(s - radius_m), s))
         _check_filters(rooms, min_area, max_area, measure)
+        # Area bounds on a fixed 5 m2 step too, else max_area=28 vs 29 isolates one ad's area.
+        min_area, max_area = (None if a is None else AREA_STEP * round(a / AREA_STEP) for a in (min_area, max_area))
         m = self._mask(rooms, min_area, max_area, measure) & (self._dist(lat, lon) <= radius_m)
         vals = self._values(measure)[m]
         base = {"center": {"lat": round(lat, 3), "lon": round(lon, 3)}, "radius_m": radius_m, "measure": measure,
@@ -319,19 +331,21 @@ class Dojazdomat:
         return binv[ry[:, None], rx[None, :]]
 
     def rank_neighborhoods(self, office_lat, office_lon, max_commute_min=None, max_rent=None, rooms=None,
-                           measure="total", limit=10, sort="best", mode="transit"):
+                           measure="total", limit=10, sort=None, mode="transit"):
         """Same inputs and rules as the map (web/app.js computeRank): median and rank from >= medianMinN ads within hoodR (all in the
-        neighbourhood's own district), rooms filter, max_rent on the published (50 PLN rounded) median, max_commute_min on whole minutes. sort: best (default, the map's order: rent + commute
+        neighbourhood's own district), rooms filter, max_rent on the published (50 PLN rounded) median, max_commute_min on whole minutes. sort: best (default for measure=total, the map's order; per_m2 defaults to value: rent + commute
         valued at the minimum wage), value (this tool's band score), commute, rent."""
         _check_point(office_lat, office_lon, "office_")
         _check_filters(rooms, None, None, measure)
+        if sort is None:
+            sort = "best" if measure == "total" else "value"
         if sort not in SORTS:
-            raise ValueError(f"sort must be one of {', '.join(SORTS)}")
+            raise InputError(f"sort must be one of {', '.join(SORTS)}")
         if sort == "best" and measure != "total":
-            raise ValueError("sort=best needs measure=total (commute cost is in PLN/month)")
+            raise InputError("sort=best needs measure=total (commute cost is in PLN/month)")
         for name, v in (("max_commute_min", max_commute_min), ("max_rent", max_rent)):
             if v is not None and not v > 0:
-                raise ValueError(f"{name} must be positive")
+                raise InputError(f"{name} must be positive")
         limit = max(1, min(int(limit), 50))
         grid = self._minutes_grid(office_lat, office_lon, mode)
         mask = self._mask(rooms, None, None, measure)
@@ -389,10 +403,10 @@ class Dojazdomat:
         _check_point(a_lat, a_lon, "a_"), _check_point(b_lat, b_lon, "b_")
         _check_filters(rooms, None, None, "total")
         if sort not in ("best", "fair", "rent"):
-            raise ValueError("sort must be best, fair or rent")
+            raise InputError("sort must be best, fair or rent")
         for name, v in (("max_commute_min", max_commute_min), ("max_rent", max_rent)):
             if v is not None and not v > 0:
-                raise ValueError(f"{name} must be positive")
+                raise InputError(f"{name} must be positive")
         limit = max(1, min(int(limit), 50))
         ga, gb = self._minutes_grid(a_lat, a_lon, mode_a), self._minutes_grid(b_lat, b_lon, mode_b)
         mask, vals = self._mask(rooms, None, None, "total"), self._values("total")
@@ -422,7 +436,7 @@ class Dojazdomat:
     def compare_neighborhoods(self, names, rooms=None, measure="total", office_lat=None, office_lon=None, mode="transit"):
         """2-4 neighborhoods side by side: median, p25, p75, n (suppressed below medianMinN) and, with an office, the commute."""
         if not 2 <= len(names) <= 4:
-            raise ValueError("give 2-4 neighborhood names")
+            raise InputError("give 2-4 neighborhood names")
         _check_filters(rooms, None, None, measure)
         hoods = [self._hood_by_name(n) for n in names]
         grid = None
@@ -446,8 +460,8 @@ class Dojazdomat:
         rank_neighborhoods it lists every neighborhood in reach, also those with too few ads for a price (median null)."""
         _check_point(lat, lon)
         _check_filters(rooms, None, None, "total")
-        if not 1 <= max_minutes <= 120:
-            raise ValueError("max_minutes must be 1-120")
+        if not 1 <= max_minutes <= 90:
+            raise InputError("max_minutes must be 1-90")
         limit = max(1, min(int(limit), 100))
         grid = self._minutes_grid(lat, lon, mode)
         mask, vals = self._mask(rooms, None, None, "total"), self._values("total")
@@ -468,16 +482,16 @@ class Dojazdomat:
         """Median asking rent per day of data for the whole city, a district or a neighborhood (pipeline/rent_history.py), with the
         change from the first to the last day. Days with fewer than medianMinN ads show null."""
         if rooms is not None and rooms not in (1, 2, 3, 4):
-            raise ValueError("rooms must be 1, 2, 3 or 4 (4 = 4+)")
+            raise InputError("rooms must be 1, 2, 3 or 4 (4 = 4+)")
         p = self.data_dir / HISTORY_FILE
         if not p.exists():
-            raise ValueError("rent history not built yet")
+            raise InputError("rent history not built yet")
         hist = json.loads(p.read_text())
         f = _fold((area or C["name"]["nom"]).strip())
         scope = next((k for k in ("city", "district", "hood") for name in hist["names"][k] if _fold(name) == f), None)
         if scope is None:
             hits = [n for k in ("district", "hood") for n in hist["names"][k] if f and f in _fold(n)]
-            raise ValueError(f"unknown area {area!r}" + (f"; did you mean: {', '.join(hits[:5])}" if hits else f"; give {C['name']['nom']}, a district or a neighborhood"))
+            raise InputError(f"unknown area {area!r}" + (f"; did you mean: {', '.join(hits[:5])}" if hits else f"; give {C['name']['nom']}, a district or a neighborhood"))
         name = next(n for n in hist["names"][scope] if _fold(n) == f)
         rk = "all" if rooms is None else str(rooms)
         series = [{"date": d["date"], **(d[scope].get(name, {}).get(rk) or {"median": None, "n": None})} for d in hist["days"]]

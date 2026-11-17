@@ -8,7 +8,7 @@ Działa na https://dojazdomat.pl. Serwer MCP dla Claude i innych asystentów AI:
 
 ![Mapa na dojazdomat.pl: biuro przy Rondzie ONZ, kolor to czas dojazdu komunikacją, odcień to czynsz](docs/img/mapa.jpg)
 
-*Mapa na dojazdomat.pl (listopad 2026). Serwer MCP (`mcp_server/`, `api/`) jest w aktualnej wersji 1.1.1; frontend w `web/` to wersja z 19 października 2026, wygląd strony od tego czasu się zmienił.*
+*Mapa na dojazdomat.pl (listopad 2026). Serwer MCP (`mcp_server/`, `api/`) jest w aktualnej wersji 1.2.1; frontend w `web/` to wersja z 19 października 2026, wygląd strony od tego czasu się zmienił.*
 
 ## Co jest w repozytorium
 
@@ -22,7 +22,7 @@ Działa na https://dojazdomat.pl. Serwer MCP dla Claude i innych asystentów AI:
 - `mcp_server/`: serwer MCP zwracający tylko statystyki zbiorcze.
 - `CONTRACT.md`: format plików danych, `ARCHITECTURE.md`: architektura.
 
-## Serwer MCP (wersja 1.1.1)
+## Serwer MCP (wersja 1.2.1)
 
 Ten sam silnik odpowiada asystentom AI. Zwraca tylko zestawienia (cena od 20 ogłoszeń), nigdy pojedyncze ogłoszenia.
 
@@ -36,6 +36,7 @@ Ten sam silnik odpowiada asystentom AI. Zwraca tylko zestawienia (cena od 20 og�
 | `compare_neighborhoods` | porównanie 2–4 osiedli: mediana, kwartyle, liczba ogłoszeń, dojazd |
 | `reachable_neighborhoods` | wszystkie osiedla, z których dojedziesz do danego miejsca w N minut |
 | `rent_trend` | mediana czynszu dzień po dniu dla Warszawy, dzielnicy albo osiedla |
+| `rank_office_locations` | ranking biur do wynajęcia dla zespołu z kodów pocztowych pracowników (do 1000 kodów, liczone w pamięci, bez zapisu); biura z próbki finne.pl, w tym repozytorium bez danych biur |
 | `dataset_info` | daty danych, źródła, liczba ogłoszeń, ograniczenia metody |
 
 Wszystkie narzędzia są tylko do odczytu. Serwer jest w oficjalnym katalogu MCP jako `io.github.MikolajSapek/dojazdomat`.

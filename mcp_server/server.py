@@ -39,6 +39,7 @@ Suggested workflow: 1) find_place to turn a workplace/stop/neighborhood name int
 neighborhoods by cost, value, commute and Pareto flag; rank_for_two when two people work in two places; \
 3) compare_neighborhoods for 2-4 named neighborhoods side by side, reachable_neighborhoods for everything within N minutes, \
 rent_stats around a chosen point, rent_trend for the median over time, commute_time for any home -> office check. \
+rank_office_locations takes a team's postcodes (processed in memory, never stored or logged) and ranks finne.pl sample offices by commute. \
 dataset_info lists sources, dates and caveats.
 
 Only aggregates (median, p25, p75, counts from >= 20 listings) are returned, never individual listings. \
@@ -62,6 +63,7 @@ class RateLimit:
 
     def __init__(self, limit=60, window=60.0):
         self.limit, self.window, self.hits, self.lock = limit, window, defaultdict(deque), Lock()
+        self.next_prune = time.monotonic() + window
 
     def allow(self, key):
         now = time.monotonic()
@@ -72,10 +74,21 @@ class RateLimit:
             if len(q) >= self.limit:
                 return False
             q.append(now)
-            if len(self.hits) > 10000:  # drop idle keys
+            if now >= self.next_prune:  # drop idle keys at most once per window, not per request
+                self.next_prune = now + self.window
                 for k in [k for k, v in self.hits.items() if not v or now - v[-1] > self.window]:
                     del self.hits[k]
             return True
+
+
+def rate_key(ip):
+    """Same rule as api/main.py rate_key (copied: the MCP image does not ship api/main.py): IPv6 -> its /64, ::ffff:a.b.c.d -> IPv4."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    a = getattr(a, "ipv4_mapped", None) or a
+    return str(ipaddress.ip_network(f"{a}/64", strict=False).network_address) if a.version == 6 else str(a)
 
 
 def _trusted_peer(peer):
@@ -97,7 +110,7 @@ class RateLimitMiddleware:
         if scope["type"] == "http":
             h = dict(scope["headers"])
             peer = (scope.get("client") or ("?",))[0]
-            ip = (h.get(b"cf-connecting-ip", b"").decode()[:45] if _trusted_peer(peer) else "") or peer
+            ip = rate_key((h.get(b"cf-connecting-ip", b"").decode()[:45] if _trusted_peer(peer) else "") or peer)
             if not self.rl.allow(ip):
                 body = json.dumps({"error": "rate limit exceeded, retry later"}).encode()
                 await send({"type": "http.response.start", "status": 429, "headers": [
@@ -115,9 +128,19 @@ class DiscoverShim:
     def __init__(self, app):
         self.app = app
 
+    @staticmethod
+    async def _too_large(send):  # a JSON-RPC request is tiny: refuse before anything is forwarded or buffered further
+        body = json.dumps({"error": "request body too large"}).encode()
+        await send({"type": "http.response.start", "status": 413, "headers": [
+            (b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["method"] != "POST" or not scope["path"].startswith("/mcp"):
             return await self.app(scope, receive, send)
+        declared = dict(scope["headers"]).get(b"content-length", b"")
+        if declared.isdigit() and int(declared) > self.MAX_BODY:
+            return await self._too_large(send)
         chunks, more, size = [], True, 0
         while more:
             msg = await receive()
@@ -127,14 +150,13 @@ class DiscoverShim:
             size += len(chunks[-1])
             more = msg.get("more_body", False)
             if size > self.MAX_BODY:
-                break
+                return await self._too_large(send)
         body = b"".join(chunks)
         req = None
-        if size <= self.MAX_BODY:
-            try:
-                req = json.loads(body)
-            except ValueError:
-                pass
+        try:
+            req = json.loads(body)
+        except ValueError:
+            pass
         if isinstance(req, dict) and req.get("method") == "server/discover" and "id" in req:
             out = json.dumps({"jsonrpc": "2.0", "id": req["id"], "error": {"code": -32601, "message": "Method not found"}}).encode()
             await send({"type": "http.response.start", "status": 200, "headers": [
@@ -157,6 +179,7 @@ def _safe(fn):
     @functools.wraps(fn)
     async def run(*a, **k):
         try:
+            anyio.to_thread.current_default_thread_limiter().total_tokens = int(os.environ.get("API_THREADS", "6"))  # same cap as api/main.py: anyio's 40 default let a burst of tool calls grow the container
             return await anyio.to_thread.run_sync(functools.partial(fn, *a, **k))
         except InputError as e:
             raise ValueError(str(e)) from None
@@ -293,6 +316,19 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
         """Median asking rent per day of data for the city, a district or a neighborhood, and the change between the first and the last
         day (trend czynszu). Daily snapshots of the map's own data; days with fewer than 20 ads show null."""
         return dj.rent_trend(area, rooms)
+
+    @mcp.tool(annotations=RO)
+    @_safe
+    @_city_doc
+    def rank_office_locations(postcodes: Annotated[list[Any], Field(max_length=1000, json_schema_extra={"items": {"type": "string", "maxLength": 10}}, description="One postcode per employee, form NN-NNN, up to 1000 entries (repeat a code for several people). Covered city area only, prefixes 00-05.")],
+                              limit: Annotated[int, Field(ge=1, le=50)] = 10,
+                              mode: Annotated[Literal["transit"], Field(description="transit only")] = "transit") -> dict[str, Any]:
+        """Best offices to rent in {city} for a team, from the employees' postcodes (gdzie wynajac biuro: ranking biur dla zespolu).
+        Scores every office in a finne.pl sample by commute home -> office (public transport, weekday 7-9) and returns the top
+        `limit`: mean and worst minutes, people over 45 min, people without a transit trip, rent per m2 and currency, area range,
+        finne.pl link. Same numbers as dojazdomat.pl/biuro/. Postcodes are processed in memory and not stored or logged.
+        The answer says how many codes were unknown, approximate or outside the grid."""
+        return dj.rank_offices_for_postcodes(postcodes, limit, mode)
 
     @mcp.tool(annotations=RO)
     @_safe

@@ -6,7 +6,8 @@ added here; the app adds none.
 """
 from collections import OrderedDict
 from pathlib import Path
-from threading import Lock
+import os
+from threading import BoundedSemaphore, Lock
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -21,10 +22,17 @@ ACCESS_CAP_M = 2000.0    # a cell further than this from any road node is unreac
 SNAP_CAP_M = 1500.0      # office further than this from the graph: no car routing
 
 
+COLD_MAX = int(os.environ.get("ROUTE_COLD_MAX", "4"))  # concurrent cache-miss searches per process, below the 6 API threads so warm cells always get one
+
+
+class Busy(Exception):
+    """Every cold-search slot is taken: the caller answers 503 + Retry-After instead of queueing."""
+
+
 class CarRouter:
     """Also serves walk and bike (same one-to-all Dijkstra): pass the walk/bike constants. office_leg adds the straight leg from the
     snapped office point to its graph node (all modes as served by api/main.py)."""
-    def __init__(self, path, access_mpm=ACCESS_MPM, access_cap_m=ACCESS_CAP_M, snap_cap_m=SNAP_CAP_M, office_leg=False):
+    def __init__(self, path, access_mpm=ACCESS_MPM, access_cap_m=ACCESS_CAP_M, snap_cap_m=SNAP_CAP_M, office_leg=False, cold_max=COLD_MAX):
         self.access_mpm, self.snap_cap_m, self.office_leg = access_mpm, snap_cap_m, office_leg
         z = np.load(path)
         lat, lon = z["lat"].astype(np.float64), z["lon"].astype(np.float64)
@@ -43,6 +51,7 @@ class CarRouter:
         self.cell_node = np.where(np.isfinite(d), self.main[np.minimum(self.cell_node, len(self.main) - 1)], n)  # n = sentinel: no road near this cell
         self.cell_access = np.where(np.isfinite(d), d / access_mpm, 0).astype(np.float32)
         self.n = n
+        self._cold = BoundedSemaphore(max(1, cold_max))
         self.cache, self.lock = OrderedDict(), Lock()  # ponytail: per-process LRU, 32 offices x 268 KB
 
     def grid(self, lat, lon):
@@ -57,7 +66,12 @@ class CarRouter:
         d, src = self.tree.query([x, y])
         if d > self.snap_cap_m:
             return None
-        sec = dijkstra(self.gt, indices=int(self.main[src]), limit=LIMIT_S)
+        if not self._cold.acquire(blocking=False):
+            raise Busy
+        try:
+            sec = dijkstra(self.gt, indices=int(self.main[src]), limit=LIMIT_S)
+        finally:
+            self._cold.release()
         sec = np.append(sec, np.inf)  # sentinel node
         t = sec[self.cell_node] / 60.0 + self.cell_access + (d / self.access_mpm if self.office_leg else 0.0)
         out = np.full(t.shape, UNREACHED, np.uint8)

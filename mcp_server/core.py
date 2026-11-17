@@ -2,6 +2,7 @@
 import json
 import math
 import os
+import re
 import unicodedata
 from collections import OrderedDict
 from pathlib import Path
@@ -101,6 +102,27 @@ def load_offers(data_dir):
     return rows, o.get("asOf"), o.get("portals", {}), o["districts"], o["hoods"]
 
 
+POSTCODE_RE = re.compile(r"\d{2}-\d{3}")
+MAX_POSTCODES = 1000
+APPROX_M = 1500  # spread_m above which a code is only roughly placed (web/biuro.js APPROX_M)
+OFFICE_SOURCE = "Offices are a sample from finne.pl (partner), not the full market"
+
+
+def _load_office_data(d):
+    """-> (offices.json, {code: (lat, lon, spread_m)}, error). Missing or broken files only disable rank_office_locations;
+    messages name files, never postcodes."""
+    try:
+        o = json.loads((d / "offices.json").read_text())
+        pc = json.loads((d / "postcodes.json").read_text())
+        b, off = o["buildings"], o["offers"]
+        assert all(len(b[k]) == len(b["id"]) for k in ("name", "address", "district", "lat", "lon", "class", "url"))
+        # same filter as web/biuro.js: 00-05 only, a few OSM mistags elsewhere
+        codes = {c: (la, lo, sp) for c, la, lo, sp in zip(pc["code"], pc["lat"], pc["lon"], pc["spread_m"]) if re.match(r"0[0-5]-", c)}
+        return {"asOf": o["asOf"], "buildings": b, "offer": {i: j for j, i in enumerate(off["building_id"])}, "offers": off}, codes, None
+    except (OSError, ValueError, KeyError, TypeError, AssertionError) as e:
+        return None, None, f"offices.json / postcodes.json unavailable ({type(e).__name__})"
+
+
 def _round(x, measure):
     """Rounded output: with small n a quantile is an exact listing price."""
     return round(x) if measure == "per_m2" else round(x / ROUND_PLN) * ROUND_PLN
@@ -133,7 +155,8 @@ class Dojazdomat:
         self._stop_fold = [_fold(s["name"]) for s in stops]
         self._hood_fold = [_fold(h["name"]) for h in self.hoods]
         self._grids, self._grid_lock = OrderedDict(), Lock()  # API serves from a threadpool
-        self._routers = {}
+        self._routers, self._router_lock = {}, Lock()
+        self.offices, self.postcodes, self.office_error = _load_office_data(self.data_dir)
 
     def _set_rows(self, rows):
         a = np.array(rows, dtype=np.float64).reshape(-1, 9)
@@ -166,9 +189,11 @@ class Dojazdomat:
 
     def _router(self, mode):
         if mode not in self._routers:  # lazy: a graph loads on its first query (walk ~8 MB npz)
-            from api import car as carmod  # scipy: only the MCP/API images have it, the pipeline image (rent_history.py) does not
-            kw = {"office_leg": True} if mode == "car" else dict(access_mpm=eng.K[mode]["mPerMin"], access_cap_m=800.0, snap_cap_m=600.0, office_leg=True)
-            self._routers[mode] = carmod.load(self.data_dir, mode, **kw)  # same settings as api/main.py
+            with self._router_lock:  # double-checked: parallel first queries must not each load the graph
+                if mode not in self._routers:
+                    from api import car as carmod  # scipy: only the MCP/API images have it, the pipeline image (rent_history.py) does not
+                    kw = {"office_leg": True} if mode == "car" else dict(access_mpm=eng.K[mode]["mPerMin"], access_cap_m=800.0, snap_cap_m=600.0, office_leg=True)
+                    self._routers[mode] = carmod.load(self.data_dir, mode, **kw)  # same settings as api/main.py
         return self._routers[mode]
 
     def _routed_grid(self, lat, lon, mode):
@@ -285,6 +310,121 @@ class Dojazdomat:
             out["origin_stops"] = self._near_stops(from_lat, from_lon)
             out["destination_stops"] = self._near_stops(to_lat, to_lon)
         return out
+
+    def rank_office_locations(self, points, candidates, slow_min=45):
+        """Transit only. points = [{lat, lon, w?}] employee homes (w = head count), candidates = [{lat, lon, ...}] offices. Minutes are
+        home -> office exactly as commute_time / the map's commuteGrid read them, computed point to point without a grid; the
+        twin of web/office-score.js (same float32 stores, same rounding). Unreached staff leave the mean and are counted apart;
+        a candidate with more than 10% of them goes last. -> candidates in ranking order, each with its input index."""
+        e, w = self.engine, self.engine.walk
+        cap, ocap = w["stopWalkCap"], w["originWalkCap"]
+        near, wts, cells = [], [], []
+        for p in points:
+            _check_point(p["lat"], p["lon"], "point")
+            cell = eng.cell_of(p["lat"], p["lon"])
+            wts.append(p.get("w", 1))
+            cells.append(cell)
+            if cell is None:
+                near.append((np.zeros(0, int), np.zeros(0)))
+                continue
+            d = np.hypot((eng._cell_lat[cell[0]] - e.slat) * eng.M_LAT, (eng._cell_lon[cell[1]] - e.slon) * eng.M_LON)
+            wk = eng.net_min(d)
+            ok = (d <= eng.reach_m(cap)) & (wk <= cap)
+            near.append((np.flatnonzero(ok), wk[ok]))
+        need = np.unique(np.concatenate([n_[0] for n_ in near] + [np.zeros(0, int)]))
+        # flat per-point arrays so each candidate is scored with a few numpy calls, not a python loop over points
+        wts = np.array(wts)
+        valid = np.array([c_ is not None for c_ in cells])
+        clat = np.array([eng._cell_lat[c_[0]] if c_ else 0.0 for c_ in cells])
+        clon = np.array([eng._cell_lon[c_[1]] if c_ else 0.0 for c_ in cells])
+        lens = np.array([len(n_[0]) for n_ in near], dtype=int)
+        flat_row = np.searchsorted(need, np.concatenate([n_[0] for n_ in near] + [np.zeros(0, int)]))
+        flat_wk = np.concatenate([n_[1] for n_ in near] + [np.zeros(0)])
+        has = lens > 0
+        starts = (np.cumsum(lens) - lens)[has]
+        out = []
+        for idx, c in enumerate(candidates):
+            _check_point(c["lat"], c["lon"], "candidate")
+            wo = eng.net_min(np.hypot((e.slat - c["lat"]) * eng.M_LAT, (e.slon - c["lon"]) * eng.M_LON))
+            acc = np.flatnonzero(wo <= cap)
+            best = np.full(len(need), np.inf)
+            if len(acc) and len(need):
+                m = e.matrix[np.ix_(need, acc)].astype(np.float64)
+                m[m == eng.UNREACHED] = np.inf
+                best = (m + wo[acc][None, :]).min(axis=1)
+            best = best.astype(np.float32).astype(np.float64)  # best[] is float32 in the map
+            b = best[flat_row]
+            b = np.where(b < eng.STOP_CUT, b + flat_wk, np.inf).astype(np.float32)
+            t = np.full(len(points), np.inf)
+            if len(starts):
+                t[has] = np.minimum.reduceat(b, starts)
+            dd = np.hypot((clat - c["lat"]) * eng.M_LAT, (clon - c["lon"]) * eng.M_LON)
+            dw = eng.net_min(dd)
+            walk = valid & (dd <= eng.reach_m(ocap)) & (dw <= ocap)
+            t = np.where(walk, np.minimum(t, dw.astype(np.float32)), t)
+            ok = t <= eng.STOP_CUT
+            lost = wts[~ok].sum().item()
+            m_ = np.floor(t[ok] + 0.5).astype(int)
+            w_ = wts[ok]
+            n_ok = w_.sum().item()
+            mins = (m_ * w_).sum().item()
+            worst = int(m_.max()) if len(m_) else None
+            slow = w_[m_ > slow_min].sum().item()
+            out.append({**c, "index": idx, "mean_min": mins / n_ok if n_ok else None, "worst_min": worst,
+                        "over_45": slow, "unreached": lost, "reached": n_ok})
+        out.sort(key=lambda r: (r["unreached"] > 0.1 * (r["unreached"] + r["reached"]), r["mean_min"] if r["mean_min"] is not None else math.inf, r["index"]))
+        return out
+
+    def rank_offices_for_postcodes(self, postcodes, limit=10, mode="transit"):
+        """Best offices (finne.pl sample) for a team given as postcodes (one entry per employee). In memory only: nothing here
+        logs, stores or echoes a code in an error. Same numbers as /biuro/ (web/office-score.js)."""
+        if mode != "transit":
+            raise InputError("mode must be 'transit'")
+        if not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise InputError("limit must be 1-50")
+        if self.offices is None:
+            raise InputError("Office data is not available on this server right now")
+        if not isinstance(postcodes, list) or not 1 <= len(postcodes) <= MAX_POSTCODES:
+            raise InputError(f"postcodes must be a list of 1-{MAX_POSTCODES} entries")
+        for i, c in enumerate(postcodes):
+            if not isinstance(c, str) or not POSTCODE_RE.fullmatch(c.strip()):
+                raise InputError(f"entry {i + 1} is not a postcode in the form NN-NNN")
+        counts = {}
+        for c in postcodes:
+            counts[c.strip()] = counts.get(c.strip(), 0) + 1
+        unknown, approx, out, cells = [], 0, 0, {}
+        for code, n in counts.items():
+            if code not in self.postcodes:
+                unknown.append(code)
+                continue
+            lat, lon, spread = self.postcodes[code]
+            cell = eng.cell_of(lat, lon)
+            if cell is None:
+                out += n
+                continue
+            approx += n if spread > APPROX_M else 0
+            h = cells.setdefault(cell, {"lat": lat, "lon": lon, "w": 0})
+            h["w"] += n
+        scored = sum(h["w"] for h in cells.values())
+        if not scored:
+            raise InputError("None of the postcodes could be placed in the covered city area (00-05 codes only)")
+        b, off = self.offices["buildings"], self.offices["offers"]
+        cands = [{"lat": b["lat"][i], "lon": b["lon"][i]} for i in range(len(b["id"]))]
+        rows = []
+        for r in self.rank_office_locations(list(cells.values()), cands)[:limit]:
+            i, j = r["index"], self.offices["offer"].get(b["id"][r["index"]])
+            o = {k: off[k][j] if j is not None else None for k in ("price_m2", "price_m2_max", "currency", "area_min", "area_max", "price_negotiable")}
+            rows.append({"name": b["name"][i], "address": b["address"][i], "district": b["district"][i], "class": b["class"][i],
+                         "mean_min": None if r["mean_min"] is None else round(r["mean_min"], 1), "worst_min": r["worst_min"],
+                         "over_45": r["over_45"], "unreachable": r["unreached"],
+                         "price_per_m2": None if o["price_negotiable"] else o["price_m2"], "price_per_m2_max": o["price_m2_max"],
+                         "currency": o["currency"], "area_m2_min": o["area_min"], "area_m2_max": o["area_max"], "url": b["url"][i]})
+        return {"mode": mode, "offices": rows,
+                "counts": {"employees": len(postcodes), "scored": scored, "recognised_codes": len(counts) - len(unknown),
+                           "unknown_codes": sorted(unknown), "approximate": approx, "out_of_grid": out},
+                "data": {"source": OFFICE_SOURCE, "as_of": self.offices["asOf"], "postcodes": "processed in memory, not stored or logged"},
+                "notes": ["Minutes: home to office by public transport, weekday 7-9, mean over scored employees (same as dojazdomat.pl/biuro/).",
+                          "approximate = employees whose code spans a wide area (suburban 05-xxx); unreachable = employees with no transit trip within 90 min, left out of the mean."]}
 
     def rent_stats(self, lat, lon, radius_m=800, rooms=None, min_area=None, max_area=None, measure="total"):
         # A free circle around any point, not a neighbourhood median: it has no district, so it ignores district lines (use

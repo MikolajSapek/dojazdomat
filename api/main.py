@@ -18,7 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from psycopg_pool import ConnectionPool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from mcp_server.core import Dojazdomat, InputError, _fold
 
@@ -54,6 +54,16 @@ def client_ip(request):
     return hops[0][:45] if hops else peer  # all private (local dev)
 
 
+def rate_key(ip):
+    """Rate-limit bucket: an IPv6 address collapses to its /64 (one subscriber owns the whole prefix), IPv4 stays as is."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    a = getattr(a, "ipv4_mapped", None) or a  # ::ffff:1.2.3.4 is an IPv4 client, not one shared :: bucket
+    return str(ipaddress.ip_network(f"{a}/64", strict=False).network_address) if a.version == 6 else str(a)
+
+
 # Grids depend only on (lat, lon) and the matrix, which changes on a transit rebuild, not nightly: let Cloudflare
 # keep them a day (stale for another if the origin is down) so a traffic spike never reaches the home uplink.
 GRID_CACHE = "public, max-age=300, s-maxage=86400, stale-while-revalidate=600, stale-if-error=86400"
@@ -70,6 +80,8 @@ RETRY_AFTER_FAILED_RELOAD = 60  # seconds before a failed (half-written) data lo
 
 
 def envelope(data=None, error=None, status=200, headers=None):
+    if status >= 400:  # an error must never sit in the CDN or a browser cache
+        headers = {**(headers or {}), "Cache-Control": "no-store"}
     return JSONResponse({"ok": error is None, "data": data, "error": error}, status_code=status, headers=headers)
 
 
@@ -83,6 +95,7 @@ Measure = Literal["total", "per_m2"]
 
 class RentQuery(Origin):
     """Same inputs as the MCP tool rent_stats."""
+    model_config = ConfigDict(extra="forbid")  # the map never calls this endpoint; grid endpoints (Origin) keep accepting v=
     radius_m: int = Field(800, ge=200, le=5000)
     rooms: int | None = Field(None, ge=1, le=4)
     min_area: int | None = Field(None, ge=0, le=1000)
@@ -92,6 +105,7 @@ class RentQuery(Origin):
 
 class HoodsQuery(Origin):
     """Same inputs as the MCP tool rank_neighborhoods (lat/lon = office)."""
+    model_config = ConfigDict(extra="forbid")
     max_commute_min: int | None = Field(None, ge=1, le=90)
     max_rent: float | None = Field(None, gt=0)
     rooms: int | None = Field(None, ge=1, le=4)
@@ -127,7 +141,7 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
     rate_limit = rate_limit or int(os.environ.get("RATE_LIMIT_PER_MIN", "240"))
     cors = cors or os.environ.get("CORS_ORIGINS", "http://localhost:8765").split(",")
     st = {"pool": None, "engine": None, "source": None, "stops_db": False, "sig": None, "car": None, "walk": None, "bike": None,
-          "files_stops": None, "gen": 0, "retry_at": 0.0}
+          "files_stops": None, "fold": (None, []), "gen": 0, "retry_at": 0.0}
     cache, cache_lock = OrderedDict(), Lock()
     reload_lock = Lock()  # one engine rebuild at a time; the new engine is built aside and swapped under cache_lock
     prune = {"at": clock()}
@@ -188,7 +202,7 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
     @app.middleware("http")
     async def guard(request: Request, call_next):
         if request.method != "OPTIONS":  # CORS preflights are not counted
-            ip, now = client_ip(request), clock()
+            ip, now = rate_key(client_ip(request)), clock()
             if now - prune["at"] > 60:  # once a minute, drop idle keys (O(keys), not per request)
                 prune["at"] = now
                 for k in [k for k, v in hits.items() if not v or now - v[-1] > 60]:
@@ -204,8 +218,8 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
             return await call_next(request)
         except Exception:
             rid = uuid.uuid4().hex[:12]
-            log.exception("unhandled error on %s (query keys: %s) [request %s]", request.url.path,
-                          ",".join(sorted(request.query_params.keys())), rid)  # no values: lat/lon are a home address
+            log.exception("unhandled error on %r (query keys: %r) [request %s]", request.url.path,
+                          sorted(request.query_params.keys()), rid)  # no values: lat/lon are a home address
             return envelope(error="internal error", status=500, headers={"X-Request-Id": rid})
 
     @app.exception_handler(ApiError)
@@ -259,6 +273,7 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
 
     offers = {"cur": None, "retry_at": 0.0}  # cur = (Dojazdomat, sig), replaced as one tuple
     offers_build = Lock()
+    hoods_cache, hoods_lock = {"dj": None, "d": OrderedDict()}, Lock()  # ranking per snapped inputs; dropped when the core is rebuilt
 
     def dojazdomat():
         """The MCP core (mcp_server/core.py), built on first use and rebuilt when refresh.sh rsyncs new data: /api/rent and
@@ -350,7 +365,10 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
     def routed(mode, o):
         if not st[mode]:
             raise ApiError(503, f"{mode} graph unavailable")
-        g = st[mode].grid(o.lat, o.lon)
+        try:
+            g = st[mode].grid(o.lat, o.lon)
+        except carmod.Busy:  # cold searches are capped per process: tell the client to retry, never queue
+            return envelope(error=f"{mode} routing busy, retry shortly", status=503, headers={"Retry-After": "2"})
         if g is None:
             raise ApiError(404, f"office is not near a {mode} network")
         head = np.array([eng.ROWS, eng.COLS], "<u2").tobytes()
@@ -384,10 +402,24 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
     def neighborhoods(q: HoodsQ):
         """= MCP rank_neighborhoods, the map's ranking for an office at lat/lon."""
         dj = dojazdomat()
+        key = (round(q.lat, 5), round(q.lon, 5), q.max_commute_min, q.max_rent, q.rooms, q.measure, q.limit, q.sort, q.mode)
+        with hoods_lock:
+            if hoods_cache["dj"] is not dj:  # core rebuilt after a data sync: old answers are stale
+                hoods_cache["dj"], hoods_cache["d"] = dj, OrderedDict()
+            d = hoods_cache["d"]
+            if key in d:
+                d.move_to_end(key)
+                return envelope(d[key], headers=API_CACHE)
         try:
-            return envelope(dj.rank_neighborhoods(q.lat, q.lon, q.max_commute_min, q.max_rent, q.rooms, q.measure, q.limit, q.sort, q.mode), headers=API_CACHE)
+            res = dj.rank_neighborhoods(*key)
         except InputError as e:
             raise ApiError(422, str(e)) from None
+        with hoods_lock:
+            if hoods_cache["dj"] is dj:  # not swapped meanwhile
+                d[key] = res
+                while len(d) > 256:
+                    d.popitem(last=False)
+        return envelope(res, headers=API_CACHE)
 
     @app.get("/api/stops")
     def stops(q: Annotated[str, Query(min_length=2, max_length=60)]):
@@ -396,10 +428,13 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
                 return envelope(queries.stops(c, q), headers=API_CACHE)
         if st["files_stops"] is None:
             raise ApiError(503, "stops unavailable")
+        src = st["files_stops"]
+        if st["fold"][0] is not src:  # fold names once per loaded dataset (reload swaps files_stops), not per request
+            st["fold"] = (src, [_fold(s["name"]) for s in src])
+        folded = st["fold"][1]
         ql = _fold(q.strip())  # ponytail: folded substring match (same as MCP find_place), exact, then prefix, then shortest first
-        hits_ = sorted((0 if f == ql else 1 if f.startswith(ql) else 2, len(f), i)
-                       for i, f in ((i, _fold(s["name"])) for i, s in enumerate(st["files_stops"])) if ql in f)
-        return envelope([{k: st["files_stops"][i][k] for k in ("id", "name", "lat", "lon")} for *_, i in hits_[:10]], headers=API_CACHE)
+        hits_ = sorted((0 if f == ql else 1 if f.startswith(ql) else 2, len(f), i) for i, f in enumerate(folded) if ql in f)
+        return envelope([{k: src[i][k] for k in ("id", "name", "lat", "lon")} for *_, i in hits_[:10]], headers=API_CACHE)
 
     return app
 

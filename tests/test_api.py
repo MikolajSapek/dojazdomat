@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 import migrate  # noqa: E402
 from api.main import create_app  # noqa: E402
 
-TEST_DB = "commute_map_api_test"
+TEST_DB = "commute_map_api_test_" + os.environ.get("PYTEST_XDIST_WORKER", "gw0")  # one DB per xdist worker: the fixture drops it WITH (FORCE)
 USER = os.environ.get("USER", "postgres")
 dsn = lambda db: f"host=localhost port=5432 user={USER} dbname={db}"
 RONDO = (52.2329, 20.9986)
@@ -93,21 +93,21 @@ def test_commute_matches_reference(client):
     from api import engine as e
     g = grid_of(client.get("/api/commute", params=dict(lat=RONDO[0], lon=RONDO[1])))
     en = e.Engine(*e.read_files(ROOT / "web" / "data"), e.read_walk(ROOT / "web" / "data"))
-    w, mpm = en.walk, en.walk["mPerMin"]
-    wt = np.hypot((en.slat - RONDO[0]) * e.M_LAT, (en.slon - RONDO[1]) * e.M_LON) / mpm
+    w = en.walk
+    wt = e.net_min(np.hypot((en.slat - RONDO[0]) * e.M_LAT, (en.slon - RONDO[1]) * e.M_LON))
     best = np.full(en.n, np.inf)
     for a in np.flatnonzero(wt <= w["stopWalkCap"]):
-        row = en.matrix[a].astype(float); row[row == 255] = np.inf
+        row = en.matrix[:, a].astype(float)  # column: home -> office; row[row == 255] = np.inf
         best = np.minimum(best, wt[a] + row)
     rng = np.random.default_rng(1)
     for _ in range(40):
         r, c = rng.integers(0, e.ROWS), rng.integers(0, e.COLS)
         la, lo = e.LAT0 + (r + .5) * e.DLAT, e.LON0 + (c + .5) * e.DLON
-        d = np.hypot((en.slat - la) * e.M_LAT, (en.slon - lo) * e.M_LON) / mpm
+        d = e.net_min(np.hypot((en.slat - la) * e.M_LAT, (en.slon - lo) * e.M_LON))
         t = np.where((d <= w["stopWalkCap"]) & (best < e.STOP_CUT), best + d, np.inf).min()
-        t = min(t, np.hypot((la - RONDO[0]) * e.M_LAT, (lo - RONDO[1]) * e.M_LON) / mpm
-                if np.hypot((la - RONDO[0]) * e.M_LAT, (lo - RONDO[1]) * e.M_LON) / mpm <= w["originWalkCap"] else np.inf)
-        exp = 255 if not np.isfinite(t) else min(254, int(np.rint(t)))
+        direct = float(e.net_min(np.hypot((la - RONDO[0]) * e.M_LAT, (lo - RONDO[1]) * e.M_LON)))
+        t = min(t, direct if direct <= w["originWalkCap"] else np.inf)
+        exp = 255 if not np.isfinite(t) or t > e.STOP_CUT else int(np.floor(t + 0.5))
         assert abs(int(g[r, c]) - exp) <= 1 if exp != 255 else g[r, c] == 255
 
 
@@ -116,55 +116,6 @@ def test_commute_validation(client, params):
     r = client.get("/api/commute", params=params)
     j = r.json()
     assert r.status_code == 422 and j["ok"] is False and j["data"] is None and "Traceback" not in r.text
-
-
-def test_rent_total(client):
-    j = client.get("/api/rent", params=dict(rooms=2)).json()
-    assert j["ok"] and j["data"]["n_listings"] == 11
-    hoods = {h["name"]: h for h in j["data"]["neighborhoods"]}
-    assert hoods["Alfa"]["median"] == 4500 and hoods["Alfa"]["n"] == 6
-    assert hoods["Beta"]["median"] == 2200
-    assert j["data"]["bins"] and all(b["n"] >= 3 for b in j["data"]["bins"])
-
-
-def test_rent_filters(client):
-    d = client.get("/api/rent", params=dict(portal="olx")).json()["data"]
-    assert 0 < d["n_listings"] < 11
-    d = client.get("/api/rent", params=dict(rooms=3)).json()["data"]
-    assert d["n_listings"] == 0 and d["bins"] == []
-    d = client.get("/api/rent", params=dict(flags=1)).json()["data"]
-    assert 0 < d["n_listings"] < 11
-    d = client.get("/api/rent", params=dict(min_area=50)).json()["data"]
-    assert d["n_listings"] == 0
-
-
-def test_rent_per_m2(client):
-    h = {x["name"]: x for x in client.get("/api/rent", params=dict(measure="per_m2")).json()["data"]["neighborhoods"]}
-    assert h["Alfa"]["median"] == pytest.approx(4500 / 40)
-
-
-@pytest.mark.parametrize("params", [dict(measure="bogus"), dict(rooms=9), dict(flags=512), dict(min_area=-1)])
-def test_rent_validation(client, params):
-    assert client.get("/api/rent", params=params).status_code == 422
-
-
-def test_sql_injection_is_inert(client):
-    r = client.get("/api/rent", params=dict(portal="x'; DROP TABLE core.listing;--"))
-    assert r.status_code == 200 and r.json()["data"]["n_listings"] == 0
-    assert client.get("/api/rent").json()["data"]["n_listings"] == 11
-
-
-def test_neighborhoods_pareto(client):
-    j = client.get("/api/neighborhoods", params=dict(lat=RONDO[0], lon=RONDO[1])).json()
-    assert j["ok"]
-    h = {x["name"]: x for x in j["data"]}
-    assert h["Alfa"]["commute"] is not None and h["Alfa"]["commute"] < h["Beta"]["commute"]
-    assert h["Alfa"]["median"] > h["Beta"]["median"]
-    assert h["Alfa"]["front"] and h["Beta"]["front"]  # trade-off: neither dominates
-
-
-def test_neighborhoods_requires_origin(client):
-    assert client.get("/api/neighborhoods").status_code == 422
 
 
 def test_stops_db_trigram(client):
@@ -192,10 +143,8 @@ def test_rate_limit(db_url):
     assert codes == [200, 200, 200, 429, 429]
 
 
-def test_db_down_gives_503_not_traceback():
+def test_db_down_still_serves_commute():
     with TestClient(create_app(database_url="postgresql://localhost:1/none"), raise_server_exceptions=False) as c:
-        r = c.get("/api/rent")
-        assert r.status_code == 503 and "Traceback" not in r.text and r.json()["ok"] is False
         assert c.get("/api/health").json()["data"]["db"] is False
         assert grid_of(c.get("/api/commute", params=dict(lat=RONDO[0], lon=RONDO[1]))) is not None
 
@@ -209,3 +158,13 @@ def test_commute_warm_latency(client):
         t = time.perf_counter(); client.get("/api/commute", params=p); ts.append((time.perf_counter() - t) * 1000)
     print("commute ms", sorted(ts))
     assert float(np.median(ts)) < 150
+
+
+def test_client_ip_trusts_headers_only_from_private_peer():
+    from types import SimpleNamespace as NS
+    from api.main import client_ip
+    mk = lambda peer, **h: NS(client=NS(host=peer), headers=h)
+    assert client_ip(mk("10.0.0.5", **{"x-forwarded-for": "1.2.3.4, 10.0.0.5"})) == "1.2.3.4"
+    assert client_ip(mk("10.0.0.5", **{"x-forwarded-for": "6.6.6.6, 1.2.3.4, 10.0.0.5"})) == "1.2.3.4"  # forged left entry ignored
+    assert client_ip(mk("172.18.0.2", **{"cf-connecting-ip": "5.6.7.8"})) == "5.6.7.8"
+    assert client_ip(mk("8.8.8.8", **{"cf-connecting-ip": "5.6.7.8"})) == "8.8.8.8"

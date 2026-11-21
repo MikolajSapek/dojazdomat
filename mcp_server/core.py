@@ -35,6 +35,20 @@ RADIUS = (200, RADIUS_STEPS[-1])
 NEAR_STOPS = 3  # nearest stops listed per endpoint
 DEFAULT_DATA = Path(__file__).resolve().parents[1] / "web" / "data"
 MODES = ("transit", "bike", "walk", "car")
+TRANSIT_BITS = {"metro": 1, "rail": 2, "tram": 4, "bus": 8}  # as api/engine.py ALL_MODES and the map's switches
+
+
+def transit_mask(modes):
+    """None (all) or a list of metro / rail / tram / bus -> bit mask for api/engine.Engine.grid."""
+    if modes is None:
+        return eng.ALL_MODES
+    bad = [m for m in modes if m not in TRANSIT_BITS]
+    if bad:
+        raise InputError(f"transit_modes: unknown {', '.join(map(str, bad))}; use metro, rail, tram, bus")
+    m = 0
+    for x in modes:
+        m |= TRANSIT_BITS[x]
+    return m
 HISTORY_FILE = "rent-history.json"  # pipeline/rent_history.py: one snapshot per day of offers.json
 MODEL = {"transit": "door-to-door, transit + walk, weekday 07:00-09:00 mean, home -> office, ~110 m grid cells",
          "bike": "OpenStreetMap bike network, speed by road class, +2 min to unlock and park, home -> office",
@@ -49,7 +63,7 @@ CAVEATS = [
     "Listings with coordPrecision 2 (district centroid only) are excluded from every statistic.",
     "Commute = minutes from home to the office. transit: mean door-to-door by public transport plus walking, weekday departures 07:00-09:00 (ZTM, SKM, metro, KM, WKD GTFS); bike and walk: OpenStreetMap paths (bike +2 min to unlock and park); car: rush-hour driving on the OSM road network, no parking time. Same minutes as the map.",
     f"A price is published only from groups of at least {MEDIAN_MIN_N} listings (map, ranking, API and this server alike); the p25-p75 range only from {IQR_MIN_N}.",
-    "A neighborhood median takes exactly the ads whose pin lies inside the neighborhood's boundary (the city's MSI areas; a suburban town: its gmina), so it never mixes in a flat from the next area. rent_stats is a plain circle around a point and ignores boundaries.",
+    "A neighborhood median takes exactly the ads whose pin lies inside the neighborhood's boundary (the city's MSI areas; a suburban town: the town's own boundary, not its gmina), so it never mixes in a flat from the next area. rent_stats is a plain circle around a point and ignores boundaries.",
     "Inputs are data/offers.json, the same file the map reads: portals older than 7 days, price outliers and cross-portal duplicates are already removed, and pins shared by 12 or more ads count as district-level (excluded).",
 ]
 
@@ -116,8 +130,8 @@ def _load_office_data(d):
         pc = json.loads((d / "postcodes.json").read_text())
         b, off = o["buildings"], o["offers"]
         assert all(len(b[k]) == len(b["id"]) for k in ("name", "address", "district", "lat", "lon", "class", "url"))
-        # same filter as web/biuro.js: 00-05 only, a few OSM mistags elsewhere
-        codes = {c: (la, lo, sp) for c, la, lo, sp in zip(pc["code"], pc["lat"], pc["lon"], pc["spread_m"]) if re.match(r"0[0-5]-", c)}
+        # same filter as web/biuro.js: the city's postcodePrefix only, a few OSM mistags elsewhere
+        codes = {c: (la, lo, sp) for c, la, lo, sp in zip(pc["code"], pc["lat"], pc["lon"], pc["spread_m"]) if re.match(rf"{C['postcodePrefix']}-", c)}
         return {"asOf": o["asOf"], "buildings": b, "offer": {i: j for j, i in enumerate(off["building_id"])}, "offers": off}, codes, None
     except (OSError, ValueError, KeyError, TypeError, AssertionError) as e:
         return None, None, f"offices.json / postcodes.json unavailable ({type(e).__name__})"
@@ -148,11 +162,17 @@ class Dojazdomat:
         self.data_dir = Path(data_dir or os.environ.get("DOJAZDOMAT_DATA") or DEFAULT_DATA)
         stops, matrix = eng.read_files(self.data_dir)
         self.stops = stops
-        self.engine = eng.Engine(stops, matrix, eng.read_walk(self.data_dir))
+        self.engine = eng.Engine(stops, matrix, eng.read_walk(self.data_dir), eng.read_variants(self.data_dir, len(stops)))
         self.hoods = json.loads((self.data_dir / "neighborhoods.json").read_text())
+        ab = self.data_dir / "area-bins.json"  # pipeline/walk/areas.py; missing = no area fill (as web/worker.js)
+        try:
+            self.area_bins = np.array(json.loads(ab.read_text())["bins"], dtype=int).reshape(-1, 3) if ab.exists() else np.zeros((0, 3), int)
+        except (ValueError, KeyError):
+            self.area_bins = np.zeros((0, 3), int)
         rows, self.offers_as_of, self.portals, self.districts, self.hood_names = load_offers(self.data_dir)
         self._set_rows(rows)
-        self._stop_fold = [_fold(s["name"]) for s in stops]
+        # stops beyond the grid edge (pipeline/transit/build.py EDGE_M) route but are not offered: commute_time refuses their point
+        self._stop_fold = [_fold(s["name"]) if eng.in_bbox(s["lat"], s["lon"]) else "" for s in stops]
         self._hood_fold = [_fold(h["name"]) for h in self.hoods]
         self._grids, self._grid_lock = OrderedDict(), Lock()  # API serves from a threadpool
         self._routers, self._router_lock = {}, Lock()
@@ -167,20 +187,27 @@ class Dojazdomat:
         self.price, self.rooms, self.area = a[:, 2], a[:, 3], a[:, 4]
 
     # ---------- helpers ----------
-    def _grid(self, lat, lon, mode="transit"):
+    def _grid(self, lat, lon, mode="transit", tm=eng.ALL_MODES):
         """uint8 ROWS x COLS minutes from every cell (home) to lat/lon (office), 255 = unreached. Same minutes as the map
         (web/app.js computeCommute): transit from the stop matrix; bike/walk/car from the OSM graphs (api/car.py, as /api/<mode>), bike
         plus addMin; a walk/bike cell outside the graph and an office off every graph fall back to the straight-line formula,
         as the map does when /api/<mode> has no answer."""
         if mode not in MODES:
             raise InputError(f"mode must be one of {', '.join(MODES)}")
-        key = (mode, round(lat, 5), round(lon, 5))
+        tm = tm if mode == "transit" else eng.ALL_MODES  # transit_modes only narrow public transport
+        key = (mode, tm, round(lat, 5), round(lon, 5))
         with self._grid_lock:
             g = self._grids.get(key)
             if g is not None:
                 self._grids.move_to_end(key)
                 return g
-        g = self.engine.grid(lat, lon) if mode == "transit" else self._routed_grid(lat, lon, mode)
+        if mode == "transit":
+            try:
+                g = self.engine.grid(lat, lon, tm)
+            except KeyError:
+                raise InputError("this combination of transit_modes is not available yet, try all modes") from None
+        else:
+            g = self._routed_grid(lat, lon, mode)
         with self._grid_lock:
             self._grids[key] = g
             while len(self._grids) > 16:
@@ -214,8 +241,8 @@ class Dojazdomat:
         out[ok] = np.floor(t[ok] + 0.5).astype(np.uint8)
         return out
 
-    def _minutes_grid(self, lat, lon, mode):
-        g = self._grid(lat, lon, mode).astype(float)
+    def _minutes_grid(self, lat, lon, mode, transit_modes=None):
+        g = self._grid(lat, lon, mode, transit_mask(transit_modes)).astype(float)
         g[g == eng.UNREACHED] = np.nan
         return g
 
@@ -254,7 +281,7 @@ class Dojazdomat:
         return np.hypot((self.lat - lat) * eng.M_LAT, (self.lon - lon) * eng.M_LON)
 
     def hood_near(self, h):
-        """Median rows of neighbourhood h: the rows whose pin lies in its area (offers.json hood: MSI osiedle or the town's gmina,
+        """Median rows of neighbourhood h: the rows whose pin lies in its area (offers.json hood: MSI osiedle or the town's own boundary,
         pipeline/walk/areas.py). One rule with web/rent.js computeHoodMed. A place without an area has no rows."""
         i = self.hood_names.index(h["name"]) if h["name"] in self.hood_names else -2
         return self.hood == i
@@ -299,12 +326,13 @@ class Dojazdomat:
                 "neighborhoods": [{"name": h["name"], "district": h["district"], "lat": h["lat"], "lon": h["lon"]}
                                   for h in pick(self.hoods, self._hood_fold)]}
 
-    def commute_time(self, from_lat, from_lon, to_lat, to_lon, mode="transit"):
+    def commute_time(self, from_lat, from_lon, to_lat, to_lon, mode="transit", transit_modes=None):
         """from = home, to = office: the grid is built at the office and read at the home cell, as the map does."""
         _check_point(from_lat, from_lon, "from_"), _check_point(to_lat, to_lon, "to_")
         cell = eng.cell_of(from_lat, from_lon)
-        v = int(self._grid(to_lat, to_lon, mode)[cell]) if cell else eng.UNREACHED
+        v = int(self._grid(to_lat, to_lon, mode, transit_mask(transit_modes))[cell]) if cell else eng.UNREACHED
         out = {"minutes": None if v == eng.UNREACHED else v, "reachable": v != eng.UNREACHED, "mode": mode,
+               **({"transit_modes": list(transit_modes)} if transit_modes is not None and mode == "transit" else {}),
                "model": MODEL[mode]}
         if mode == "transit":
             out["origin_stops"] = self._near_stops(from_lat, from_lon)
@@ -332,16 +360,28 @@ class Dojazdomat:
             ok = (d <= eng.reach_m(cap)) & (wk <= cap)
             near.append((np.flatnonzero(ok), wk[ok]))
         need = np.unique(np.concatenate([n_[0] for n_ in near] + [np.zeros(0, int)]))
-        # flat per-point arrays so each candidate is scored with a few numpy calls, not a python loop over points
+
+        def flat(lists):  # per-point stop lists as flat arrays, so each candidate is scored with a few numpy calls
+            lens = np.array([len(n_[0]) for n_ in lists], dtype=int)
+            row = np.searchsorted(need, np.concatenate([n_[0] for n_ in lists] + [np.zeros(0, int)]))
+            wk_ = np.concatenate([n_[1] for n_ in lists] + [np.zeros(0)])
+            has = lens > 0
+            return row, wk_, has, (np.cumsum(lens) - lens)[has]
+
+        def via(best, lists):
+            row, wk_, has, starts = lists
+            b = best[row]
+            b = np.where(b < eng.STOP_CUT, b + wk_, np.inf).astype(np.float32)
+            t = np.full(len(points), np.inf)
+            if len(starts):
+                t[has] = np.minimum.reduceat(b, starts)
+            return t
+
+        NEAR = flat(near)
         wts = np.array(wts)
         valid = np.array([c_ is not None for c_ in cells])
         clat = np.array([eng._cell_lat[c_[0]] if c_ else 0.0 for c_ in cells])
         clon = np.array([eng._cell_lon[c_[1]] if c_ else 0.0 for c_ in cells])
-        lens = np.array([len(n_[0]) for n_ in near], dtype=int)
-        flat_row = np.searchsorted(need, np.concatenate([n_[0] for n_ in near] + [np.zeros(0, int)]))
-        flat_wk = np.concatenate([n_[1] for n_ in near] + [np.zeros(0)])
-        has = lens > 0
-        starts = (np.cumsum(lens) - lens)[has]
         out = []
         for idx, c in enumerate(candidates):
             _check_point(c["lat"], c["lon"], "candidate")
@@ -353,11 +393,7 @@ class Dojazdomat:
                 m[m == eng.UNREACHED] = np.inf
                 best = (m + wo[acc][None, :]).min(axis=1)
             best = best.astype(np.float32).astype(np.float64)  # best[] is float32 in the map
-            b = best[flat_row]
-            b = np.where(b < eng.STOP_CUT, b + flat_wk, np.inf).astype(np.float32)
-            t = np.full(len(points), np.inf)
-            if len(starts):
-                t[has] = np.minimum.reduceat(b, starts)
+            t = via(best, NEAR)
             dd = np.hypot((clat - c["lat"]) * eng.M_LAT, (clon - c["lon"]) * eng.M_LON)
             dw = eng.net_min(dd)
             walk = valid & (dd <= eng.reach_m(ocap)) & (dw <= ocap)
@@ -407,7 +443,7 @@ class Dojazdomat:
             h["w"] += n
         scored = sum(h["w"] for h in cells.values())
         if not scored:
-            raise InputError("None of the postcodes could be placed in the covered city area (00-05 codes only)")
+            raise InputError("None of the postcodes could be placed in the covered city area")
         b, off = self.offices["buildings"], self.offices["offers"]
         cands = [{"lat": b["lat"][i], "lon": b["lon"][i]} for i in range(len(b["id"]))]
         rows = []
@@ -424,7 +460,7 @@ class Dojazdomat:
                            "unknown_codes": sorted(unknown), "approximate": approx, "out_of_grid": out},
                 "data": {"source": OFFICE_SOURCE, "as_of": self.offices["asOf"], "postcodes": "processed in memory, not stored or logged"},
                 "notes": ["Minutes: home to office by public transport, weekday 7-9, mean over scored employees (same as dojazdomat.pl/biuro/).",
-                          "approximate = employees whose code spans a wide area (suburban 05-xxx); unreachable = employees with no transit trip within 90 min, left out of the mean."]}
+                          f"approximate = employees whose code spans a wide area (suburban codes); unreachable = employees with no transit trip within {eng.STOP_CUT} min, left out of the mean."]}
 
     def rent_stats(self, lat, lon, radius_m=800, rooms=None, min_area=None, max_area=None, measure="total"):
         # A free circle around any point, not a neighbourhood median: it has no district, so it ignores district lines (use
@@ -449,7 +485,8 @@ class Dojazdomat:
         return {**base, **_stats(vals, measure)}
 
     def _cell_rent(self, mask, vals):
-        """Rent per grid cell: 350 m bins, 3x3 block median when block holds >= 3 listings (web/app.js buildBins)."""
+        """Rent per grid cell: 350 m bins, 3x3 block median when the block holds >= medianMinN listings, else the median of the place
+        (osiedle or town) the bin lies in, when it has one (web/rent.js buildBins + fillFromAreas)."""
         cos = eng.M_LON
         by = np.floor((self.lat[mask] - eng.LAT0) * eng.M_LAT / BIN_M).astype(int)
         bx = np.floor((self.lon[mask] - eng.LON0) * cos / BIN_M).astype(int)
@@ -459,11 +496,23 @@ class Dojazdomat:
         for y, x, v in zip(by[ok], bx[ok], vals[mask][ok]):
             lists.setdefault((y, x), []).append(v)
         binv = np.full((br, bc), np.nan)
+        near = np.zeros((br, bc), bool)  # >= 1 ad in the 3x3 block (web/rent.js buildBins near)
         for y, x in {(y + dy, x + dx) for y, x in lists for dy in (-1, 0, 1) for dx in (-1, 0, 1)}:
             if 0 <= y < br and 0 <= x < bc:
                 block = [v for dy in (-1, 0, 1) for dx in (-1, 0, 1) for v in lists.get((y + dy, x + dx), ())]
+                near[y, x] = bool(block)
                 if len(block) >= BIN_MIN:
                     binv[y, x] = median(block)
+        # a bin without enough ads in its block, inside a place with a median, shows that median (web/rent.js fillFromAreas)
+        meds = {}
+        for y, x, i in getattr(self, "area_bins", ()):  # absent on bare test doubles
+            if y >= br or x >= bc or not np.isnan(binv[y, x]) or i >= len(self.hoods) or not near[y, x]:
+                continue
+            if i not in meds:
+                v = vals[self.hood_mask(self.hoods[i], mask)]
+                meds[i] = median(v) if len(v) >= MEDIAN_MIN_N else None
+            if meds[i] is not None:
+                binv[y, x] = meds[i]
         clat = eng.LAT0 + (np.arange(eng.ROWS) + 0.5) * eng.DLAT
         clon = eng.LON0 + (np.arange(eng.COLS) + 0.5) * eng.DLON
         ry = np.clip(np.floor((clat - eng.LAT0) * eng.M_LAT / BIN_M).astype(int), 0, br - 1)
@@ -471,9 +520,9 @@ class Dojazdomat:
         return binv[ry[:, None], rx[None, :]]
 
     def rank_neighborhoods(self, office_lat, office_lon, max_commute_min=None, max_rent=None, rooms=None,
-                           measure="total", limit=10, sort=None, mode="transit"):
+                           measure="total", limit=10, sort=None, mode="transit", transit_modes=None):
         """Same inputs and rules as the map (web/app.js computeRank): median and rank from >= medianMinN ads within hoodR (all in the
-        neighbourhood's own district), rooms filter, max_rent on the published (50 PLN rounded) median, max_commute_min on whole minutes. sort: best (default for measure=total, the map's order; per_m2 defaults to value: rent + commute
+        neighbourhood's own district), rooms filter, max_rent on the published (50 PLN rounded) median, max_commute_min on whole minutes. sort: best (default for measure=total; the map's own default is now fastest first; per_m2 defaults to value: rent + commute
         valued at the minimum wage), value (this tool's band score), commute, rent."""
         _check_point(office_lat, office_lon, "office_")
         _check_filters(rooms, None, None, measure)
@@ -487,7 +536,7 @@ class Dojazdomat:
             if v is not None and not v > 0:
                 raise InputError(f"{name} must be positive")
         limit = max(1, min(int(limit), 50))
-        grid = self._minutes_grid(office_lat, office_lon, mode)
+        grid = self._minutes_grid(office_lat, office_lon, mode, transit_modes)
         mask = self._mask(rooms, None, None, measure)
         vals = self._values(measure)
         cell_rent = self._cell_rent(mask, vals)
@@ -526,7 +575,7 @@ class Dojazdomat:
         sel = [x for x in out if (max_commute_min is None or x[0]["commute_min"] <= max_commute_min)
                and (max_rent is None or x[0]["median_rent"] <= max_rent)]  # rounded: a bisect on max_rent resolves only the published median
         key = {"value": lambda x: (x[0]["value_score"] is None, -(x[0]["value_score"] or 0), x[0]["commute_min"]),
-               "best": lambda x: x[2], "commute": lambda x: x[0]["commute_min"], "rent": lambda x: x[1]}[sort]
+               "best": lambda x: x[2], "commute": lambda x: (x[0]["commute_min"], x[1]), "rent": lambda x: x[1]}[sort]
         sel.sort(key=key)  # stable: ties keep neighborhoods.json order, as the map does
         return {"office": {"lat": office_lat, "lon": office_lon}, "mode": mode, "measure": measure, "sort": sort,
                 "unit": "PLN/m2/month" if measure == "per_m2" else "PLN/month",
@@ -536,7 +585,7 @@ class Dojazdomat:
                 "eligible": len(out), "returned": min(limit, len(sel)), "neighborhoods": [x[0] for x in sel[:limit]]}
 
     def rank_for_two(self, a_lat, a_lon, b_lat, b_lon, mode_a="transit", mode_b="transit", max_commute_min=None,
-                     max_rent=None, rooms=None, limit=10, sort="best"):
+                     max_rent=None, rooms=None, limit=10, sort="best", transit_modes=None):
         """Two workplaces (a couple): every neighborhood with >= medianMinN ads and both commutes. best = median rent + both commutes
         valued at the minimum wage (42 trips/month each), the map's cost rule twice; fair = the longer of the two commutes first;
         rent = cheapest. max_commute_min applies to each person."""
@@ -548,7 +597,7 @@ class Dojazdomat:
             if v is not None and not v > 0:
                 raise InputError(f"{name} must be positive")
         limit = max(1, min(int(limit), 50))
-        ga, gb = self._minutes_grid(a_lat, a_lon, mode_a), self._minutes_grid(b_lat, b_lon, mode_b)
+        ga, gb = self._minutes_grid(a_lat, a_lon, mode_a, transit_modes), self._minutes_grid(b_lat, b_lon, mode_b, transit_modes)
         mask, vals = self._mask(rooms, None, None, "total"), self._values("total")
         out = []
         for h in self.hoods:
@@ -595,15 +644,15 @@ class Dojazdomat:
         return {"measure": measure, "unit": "PLN/m2/month" if measure == "per_m2" else "PLN/month", "rooms": rooms,
                 "mode": mode if grid is not None else None, "neighborhoods": rows}
 
-    def reachable_neighborhoods(self, lat, lon, max_minutes=30, mode="transit", rooms=None, limit=50):
+    def reachable_neighborhoods(self, lat, lon, max_minutes=30, mode="transit", rooms=None, limit=50, transit_modes=None):
         """Neighborhoods whose centre is within max_minutes of lat/lon (home -> that point), fastest first. Unlike
         rank_neighborhoods it lists every neighborhood in reach, also those with too few ads for a price (median null)."""
         _check_point(lat, lon)
         _check_filters(rooms, None, None, "total")
-        if not 1 <= max_minutes <= 90:
-            raise InputError("max_minutes must be 1-90")
+        if not 1 <= max_minutes <= eng.STOP_CUT:
+            raise InputError(f"max_minutes must be 1-{eng.STOP_CUT}")
         limit = max(1, min(int(limit), 100))
-        grid = self._minutes_grid(lat, lon, mode)
+        grid = self._minutes_grid(lat, lon, mode, transit_modes)
         mask, vals = self._mask(rooms, None, None, "total"), self._values("total")
         hits = []
         for h in self.hoods:

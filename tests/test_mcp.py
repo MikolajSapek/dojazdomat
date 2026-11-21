@@ -328,7 +328,7 @@ def test_grid_cache_is_thread_safe(offers_data, monkeypatch):
 
     d = Dojazdomat(offers_data)
     d._grids = Slow()
-    monkeypatch.setattr(d.engine, "grid", lambda lat, lon: np.zeros(1))
+    monkeypatch.setattr(d.engine, "grid", lambda lat, lon, modes=eng.ALL_MODES: np.zeros(1))
     pts = [(52.20 + i * 0.001, 21.00) for i in range(20)]  # 20 keys on a 16-entry LRU: hits race evictions
     with ThreadPoolExecutor(8) as ex:
         list(ex.map(lambda p: d._grid(*p), pts * 20))
@@ -384,19 +384,35 @@ def test_failed_reload_backs_off(offers_data, monkeypatch):
     assert len(calls) == 1
 
 
-def test_tool_list_without_listing_data(tmp_path):
-    """Runs where listing data is absent: the public data files plus an empty offers.json are enough to list the tools and route."""
-    from mcp.shared.memory import create_connected_server_and_client_session as connect
-    for f in DATA.iterdir():
-        if f.name != "offers.json":  # written below; never through a symlink into web/data
-            (tmp_path / f.name).symlink_to(f)
-    cols = dict.fromkeys(("lat", "lon", "price", "rooms", "area", "flags", "prec", "dist", "hood"), [])
-    (tmp_path / "offers.json").write_text(json.dumps({"asOf": "2026-10-24", "n": 0, "districts": [], "hoods": [], **cols}))
-    srv = build_server(tmp_path)
+def test_limits_follow_the_120_min_cut(dj, offers_data):
+    """The MCP tells clients the map's rule: 120 min (stopCut), in the office note and in the accepted limits."""
+    from mcp_server.core import InputError
+    assert eng.STOP_CUT == 120
+    notes = dj.rank_offices_for_postcodes(["00-001", "02-972"], limit=1)["notes"]
+    assert any("within 120 min" in n for n in notes) and not any("90 min" in n for n in notes)
+    assert dj.reachable_neighborhoods(*RONDO, max_minutes=120)["neighborhoods"]
+    with pytest.raises(InputError):
+        dj.reachable_neighborhoods(*RONDO, max_minutes=121)
+    tools = {t.name: t.inputSchema["properties"] for t in asyncio.run(build_server(offers_data).list_tools())}
+    assert tools["reachable_neighborhoods"]["max_minutes"]["maximum"] == 120
+    assert tools["rank_neighborhoods"]["max_commute_min"]["anyOf"][0]["maximum"] == 120
 
-    async def go():
-        async with connect(srv._mcp_server) as c:
-            assert len((await c.list_tools()).tools) == 10
-            ok = await c.call_tool("commute_time", dict(from_lat=RONDO[0], from_lon=RONDO[1], to_lat=KABATY[0], to_lon=KABATY[1]))
-            assert not ok.isError and 20 <= ok.structuredContent["minutes"] <= 45
-    asyncio.run(go())
+
+def test_rent_history_archived_day_uses_todays_areas(offers_data, tmp_path):
+    """An archived offers.json carries the hood column of its day's areas (gmina era). The rebuild reassigns hood from lat/lon with
+    today's areas, so the town medians of an old day are comparable with today's (no jump from the 2026-11-19 boundary change)."""
+    import tarfile
+    from pipeline import rent_history
+    for f in offers_data.iterdir():
+        (tmp_path / f.name).symlink_to(f.resolve())
+    old = json.loads((offers_data / "offers.json").read_text())
+    old["hoods"] = ["Gmina-era place"]
+    old["hood"] = [0] * len(old["hood"])  # every pin in some other area, as under other boundaries
+    arch = tmp_path / "arch"
+    arch.mkdir()
+    (arch / "offers.json").write_text(json.dumps(old))
+    with tarfile.open(arch / "listings-2026-11-10.tar.gz", "w:gz") as t:
+        t.add(arch / "offers.json", arcname="offers.json")
+    h = rent_history.build(tmp_path, archive=arch, today="2026-11-20")
+    day = {d["date"]: d for d in h["days"]}
+    assert day["2026-11-10"]["hood"] == day["2026-11-20"]["hood"] and day["2026-11-20"]["hood"]

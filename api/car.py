@@ -14,9 +14,9 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 
-from .engine import COLS, DLAT, DLON, LAT0, LON0, M_LAT, M_LON, ROWS, UNREACHED
+from .engine import COLS, DLAT, DLON, LAT0, LON0, M_LAT, M_LON, ROWS, STOP_CUT, UNREACHED
 
-LIMIT_S = 95 * 60        # beyond the app's 90 min cut, stop expanding
+LIMIT_S = (STOP_CUT + 5) * 60  # a little beyond the app's cut (web/model-constants.json stopCut), stop expanding
 ACCESS_MPM = 250.0       # cell centre -> nearest road node, straight line at 15 km/h
 ACCESS_CAP_M = 2000.0    # a cell further than this from any road node is unreached (600 m left holes along long junction-to-junction edges)
 SNAP_CAP_M = 1500.0      # office further than this from the graph: no car routing

@@ -1,9 +1,13 @@
 """Commute engine: same model as web/app.js (SPEC 2.6), vectorised with numpy."""
+import hashlib
 import json
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger("api")
 
 # One source for the web app and this engine: web/model-constants.json (docker images copy it next to web/data, see the Dockerfiles).
 K = json.loads((Path(__file__).resolve().parents[1] / "web" / "model-constants.json").read_text())
@@ -67,6 +71,29 @@ def read_files(data_dir):
     return stops, np.frombuffer(raw, np.uint8, offset=4).reshape(n, n)
 
 
+ALL_MODES = 15  # mode bits metro 1, rail 2, tram 4, bus 8 (pipeline/transit/build.py MODE_BIT); 15 = matrix.bin
+
+
+def read_variants(data_dir, n):
+    """-> {mask: n x n uint8} from matrix-<mask>.bin (one per combination of modes), memory-mapped so workers share the page cache.
+    A file that is missing or does not match n stops is left out: /api/commute answers 503 for that combination."""
+    out = {}
+    side = Path(data_dir) / "matrix-variants.json"  # written by build.py next to the variants: sha256 of the matrix.bin of the same run
+    if side.exists():
+        try:
+            want = json.loads(side.read_text()).get("matrix_sha256")
+        except (ValueError, AttributeError):
+            want = None
+        if want != hashlib.sha256((Path(data_dir) / "matrix.bin").read_bytes()).hexdigest():
+            log.warning("matrix-variants.json sha256 does not match matrix.bin: mode variants dropped, mode-switch views answer 503 until the weekly rebuild")
+            return out  # variants from another build than matrix.bin; absent sidecar (older builds) stays accepted
+    for mask in range(1, ALL_MODES):
+        f = Path(data_dir) / f"matrix-{mask}.bin"
+        if f.exists() and f.stat().st_size == 4 + n * n and int(np.fromfile(f, "<u4", 1)[0]) == n:
+            out[mask] = np.memmap(f, np.uint8, "r", offset=4, shape=(n, n))
+    return out
+
+
 def read_db(conn):
     """-> (stops, matrix) from core tables, or None when empty/inconsistent."""
     stops = conn.execute(
@@ -85,6 +112,7 @@ class Engine:
     stops: list
     matrix: np.ndarray
     walk: dict
+    variants: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.n = len(self.stops)
@@ -118,15 +146,17 @@ class Engine:
         self.cover[cell, rank] = s_idx
         self.cover_walk[cell, rank] = walk
 
-    def grid(self, lat, lon):
-        """uint8 ROWS x COLS minutes (255 = unreached)."""
+    def grid(self, lat, lon, modes=ALL_MODES):
+        """uint8 ROWS x COLS minutes (255 = unreached). modes: bit mask of the transit modes allowed (0 = on foot only).
+        KeyError when that combination has no matrix."""
         w = self.walk
+        matrix = self.matrix if modes == ALL_MODES else self.variants[modes] if modes else None
         walk_to = net_min(np.hypot((self.slat - lat) * M_LAT, (self.slon - lon) * M_LON))
-        acc = np.flatnonzero(walk_to <= w["stopWalkCap"])
+        acc = np.flatnonzero(walk_to <= w["stopWalkCap"]) if modes else np.array([], int)
         best = np.full(self.n + 1, np.inf, np.float32)
         if len(acc):
             # matrix[i, j] = minutes departing stop i, arriving stop j; home -> office reads the COLUMNS of the office stops
-            m = self.matrix[:, acc].astype(np.float32)
+            m = matrix[:, acc].astype(np.float32)
             m[m == UNREACHED] = np.inf
             best[: self.n] = (m + walk_to[acc][None, :].astype(np.float32)).min(axis=1)
         best[best >= STOP_CUT] = np.inf

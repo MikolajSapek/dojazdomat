@@ -59,13 +59,23 @@ def constants(s: str | None = None) -> dict:
     return k
 
 
+def city_stops(rows, c: dict) -> list[dict]:
+    """GTFS stops.txt rows inside the city: in osm.cityBbox, and (when the feed has mkuran's town_name) in one of its municipalities."""
+    s, n, w, e = c["osm"]["cityBbox"]
+    return [r for r in rows if s <= float(r["stop_lat"]) <= n and w <= float(r["stop_lon"]) <= e
+            and ("town_name" not in r or r["town_name"] in c["municipalities"])]
+
+
 def enabled() -> list[str]:
     """Slugs the nightly crawls, Warsaw first (its log lines and deploy stay as they were)."""
     on = [p.stem for p in sorted((ROOT / "cities").glob("*.json")) if _load(p.stem).get("nightly")]
     return sorted(on, key=lambda s: s != DEFAULT)
 
 
-if __name__ == "__main__":  # shell: python3 pipeline/city.py enabled | raw <slug> | web <slug>
+if __name__ == "__main__":  # shell: python3 pipeline/city.py enabled | raw <slug> | web <slug> | mainfeed <slug> (first role-main feed name)
     import sys
     cmd, arg = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else None)
-    print("\n".join(enabled()) if cmd == "enabled" else (raw(arg) if cmd == "raw" else web(arg)))
+    if cmd == "mainfeed":
+        print(next(f["name"] for f in load(arg)["transit"]["feeds"] if f["role"] == "main"))
+    else:
+        print("\n".join(enabled()) if cmd == "enabled" else (raw(arg) if cmd == "raw" else web(arg)))

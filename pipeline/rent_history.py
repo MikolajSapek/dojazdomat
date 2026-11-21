@@ -20,6 +20,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from mcp_server.core import HISTORY_FILE, snapshot  # noqa: E402
 from pipeline import city  # noqa: E402
+from pipeline.merge_listings import district_index  # noqa: E402
+
+
+def with_todays_areas(offers, areas_path):
+    """offers.json dict with hood/hoods recomputed from lat/lon with today's areas.json, the way merge_listings.py does (-1 for a
+    precision-2 pin). An archived day carries the hood column of its own day's boundaries; a boundary change (towns instead of
+    gminas, 2026-11-19) would otherwise show up in rent_trend as a market move."""
+    if not all(k in offers for k in ("lat", "lon", "prec")):
+        return offers  # too old to place: snapshot() skips it with its usual message
+    names, idx = district_index(offers["lat"], offers["lon"], areas_path)
+    hoods = names[:-1]
+    return {**offers, "hoods": hoods, "hood": [i if i < len(hoods) and p < 2 else -1 for i, p in zip(idx, offers["prec"])]}
 
 
 def load(path):
@@ -29,8 +41,8 @@ def load(path):
         return {"days": []}
 
 
-def archived(archive_dir):
-    """Yield temp dirs holding one archived day's offers.json (days archived before offers.json was added are skipped)."""
+def archived(archive_dir, areas_path):
+    """Yield temp dirs holding one archived day's offers.json, its hood column recomputed with today's areas (days archived before offers.json was added are skipped)."""
     for tar in sorted(Path(archive_dir).glob("listings-*.tar.gz")):
         with tarfile.open(tar) as t:
             member = next((m for m in t.getmembers() if m.name.endswith("offers.json") and m.isfile()), None)
@@ -38,7 +50,7 @@ def archived(archive_dir):
                 continue
             day = re.search(r"\d{4}-\d{2}-\d{2}", tar.name).group(0)
             with tempfile.TemporaryDirectory() as d:
-                (Path(d) / "offers.json").write_bytes(t.extractfile(member).read())
+                (Path(d) / "offers.json").write_text(json.dumps(with_todays_areas(json.loads(t.extractfile(member).read()), areas_path)))
                 yield day, d
 
 
@@ -47,7 +59,7 @@ def build(data, archive=None, today=None):
     hoods = json.loads((data / "neighborhoods.json").read_text())
     hist = load(data / HISTORY_FILE)
     days = {d["date"]: d for d in hist["days"]}
-    for day, d in (archived(archive) if archive else ()):
+    for day, d in (archived(archive, data / "areas.json") if archive else ()):
         try:
             snap = {**snapshot(d, hoods), "date": day}
         except ValueError as e:  # an offers.json from before the district/neighborhood columns: no comparable medians

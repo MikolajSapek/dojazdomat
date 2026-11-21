@@ -42,7 +42,8 @@ rent_stats around a chosen point, rent_trend for the median over time, commute_t
 rank_office_locations takes a team's postcodes (processed in memory, never stored or logged) and ranks finne.pl sample offices by commute. \
 dataset_info lists sources, dates and caveats.
 
-Only aggregates (median, p25, p75, counts from >= 20 listings) are returned, never individual listings. \
+Rental data: only aggregates (median, p25, p75, counts from >= 20 listings) are returned, never individual rental listings; \
+rank_office_locations is the exception and returns individual office offers from finne.pl with links. \
 Rents are monthly asking prices in PLN (incl. czynsz administracyjny where stated). Area: {EN} only, \
 lat {LAT0}-{LAT1}, lon {LON0}-{LON1}. Commute modes: transit (weekday morning, door to door), bike, walk, car (rush hour); \
 minutes always run from home to the office, as on the map."""
@@ -54,6 +55,7 @@ Lat = Annotated[float, Field(description=f"Latitude, WGS84, {eng.LAT0}-{eng.LAT1
 Lon = Annotated[float, Field(description=f"Longitude, WGS84, {eng.LON0}-{eng.LON1} ({NAME['nom']} and commuter belt)", ge=eng.LON0, le=eng.LON1)]
 Rooms = Annotated[int | None, Field(description="Rooms 1-4 (4 = 4+); omit for any / liczba pokoi", ge=1, le=4)]
 Measure = Annotated[Literal["total", "per_m2"], Field(description="'total' PLN/month or 'per_m2' PLN/m2/month")]
+TransitModes = Annotated[list[Literal["metro", "rail", "tram", "bus"]] | None, Field(description="transit only: which public transport to use, e.g. ['metro'] = metro only, ['metro', 'tram']; rail = SKM, KM, WKD trains. Default all. [] = walking only / tylko wybrane srodki transportu", max_length=4)]
 Mode = Annotated[Literal["transit", "bike", "walk", "car"], Field(description="transit (default, weekday morning public transport + walking), bike, walk or car (rush hour) / komunikacja, rower, pieszo, auto")]
 RO = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 
@@ -201,7 +203,7 @@ class Reloading:
 
     def _sig(self):
         d = self.dj.data_dir
-        return tuple((f.name, f.stat().st_mtime_ns) for f in sorted(d.glob("*.json")) + [d / "matrix.bin"] if f.exists())
+        return tuple((f.name, f.stat().st_mtime_ns) for f in sorted(d.glob("*.json")) + [d / "matrix.bin", *sorted(d.glob("matrix-*.bin"))] if f.exists())
 
     def __getattr__(self, name):
         with self.lock:
@@ -229,11 +231,15 @@ def transport_security():
                                      allowed_origins=DEFAULT_ORIGINS + [f"https://{h}" for h in extra])
 
 
+VERSION = "1.2.2"  # keep equal to ops/mcp-registry/server.json (tests/test_mcp_version.py); the cards are generated from it
+
+
 def build_server(data_dir=None, host="127.0.0.1", port=8790):
     dj = Reloading(data_dir)
     sec = transport_security()
     mcp = FastMCP("dojazdomat", instructions=INSTRUCTIONS, host=host, port=port, streamable_http_path="/mcp",
                   stateless_http=True, json_response=True, transport_security=sec)
+    mcp._mcp_server.version = VERSION  # FastMCP has no version argument; unset it reports the SDK's own
 
     @mcp.tool(annotations=RO)
     @_safe
@@ -245,11 +251,11 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
 
     @mcp.tool(annotations=RO)
     @_safe
-    def commute_time(from_lat: Lat, from_lon: Lon, to_lat: Lat, to_lon: Lon, mode: Mode = "transit") -> dict[str, Any]:
+    def commute_time(from_lat: Lat, from_lon: Lon, to_lat: Lat, to_lon: Lon, mode: Mode = "transit", transit_modes: TransitModes = None) -> dict[str, Any]:
         """Minutes from home (from) to work (to), same model as the Dojazdomat map (czas dojazdu z domu do pracy). transit:
         door to door by public transport plus walking, weekday 7-9 average, with the nearest stops at both ends; bike, walk: OpenStreetMap
-        paths (bike +2 min); car: rush-hour driving. minutes is null when unreachable (over 90 min)."""
-        return dj.commute_time(from_lat, from_lon, to_lat, to_lon, mode)
+        paths (bike +2 min); car: rush-hour driving. minutes is null when unreachable (over 120 min)."""
+        return dj.commute_time(from_lat, from_lon, to_lat, to_lon, mode, transit_modes)
 
     @mcp.tool(annotations=RO)
     @_safe
@@ -265,29 +271,30 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
     @_safe
     @_city_doc
     def rank_neighborhoods(office_lat: Lat, office_lon: Lon,
-                           max_commute_min: Annotated[int | None, Field(description="Max commute minutes", ge=1, le=90)] = None,
+                           max_commute_min: Annotated[int | None, Field(description="Max commute minutes", ge=1, le=eng.STOP_CUT)] = None,
                            max_rent: Annotated[float | None, Field(description="Max neighborhood median rent (PLN, or PLN/m2 if measure=per_m2)", gt=0)] = None,
                            rooms: Rooms = None, measure: Measure = "total",
                            limit: Annotated[int, Field(ge=1, le=50)] = 10,
-                           sort: Annotated[Literal["value", "best", "commute", "rent"] | None, Field(description="best = rent + commute valued at the minimum wage (default for measure=total, the map's order); value (default for per_m2) = score vs typical rent in the same commute band; commute = fastest first; rent = cheapest first")] = None,
-                           mode: Mode = "transit") -> dict[str, Any]:
+                           sort: Annotated[Literal["value", "best", "commute", "rent"] | None, Field(description="best = rent + commute valued at the minimum wage (default for measure=total; the map itself now opens on fastest first); value (default for per_m2) = score vs typical rent in the same commute band; commute = fastest first; rent = cheapest first")] = None,
+                           mode: Mode = "transit", transit_modes: TransitModes = None) -> dict[str, Any]:
         """Rank {city} neighborhoods for a workplace: median rent, commute minutes, value score (rent vs typical rent in the same
         commute band, like the map), monthly_cost (rent + commute valued at the minimum wage) and Pareto flag (no neighborhood both faster and cheaper)
-        (ranking osiedli: czynsz, dojazd, wartosc, front Pareto). Same data and rules as the map: neighborhoods with fewer than 20 ads are skipped. Sorted by best (rent + commute cost, the map's order) unless sort is given."""
-        return dj.rank_neighborhoods(office_lat, office_lon, max_commute_min, max_rent, rooms, measure, limit, sort, mode)
+        (ranking osiedli: czynsz, dojazd, wartosc, front Pareto). Same data and rules as the map: neighborhoods with fewer than 20 ads are skipped. Sorted by best (rent + commute cost; the map itself now opens on fastest first) unless sort is given."""
+        return dj.rank_neighborhoods(office_lat, office_lon, max_commute_min, max_rent, rooms, measure, limit, sort, mode, transit_modes)
 
     @mcp.tool(annotations=RO)
     @_safe
     @_city_doc
     def rank_for_two(a_lat: Lat, a_lon: Lon, b_lat: Lat, b_lon: Lon, mode_a: Mode = "transit", mode_b: Mode = "transit",
-                     max_commute_min: Annotated[int | None, Field(description="Max commute minutes for each person", ge=1, le=90)] = None,
+                     max_commute_min: Annotated[int | None, Field(description="Max commute minutes for each person", ge=1, le=eng.STOP_CUT)] = None,
                      max_rent: Annotated[float | None, Field(description="Max neighborhood median rent, PLN/month", gt=0)] = None,
                      rooms: Rooms = None, limit: Annotated[int, Field(ge=1, le=50)] = 10,
-                     sort: Annotated[Literal["best", "fair", "rent"], Field(description="best = rent + both commutes valued at the minimum wage (default); fair = shortest longer commute first; rent = cheapest first")] = "best") -> dict[str, Any]:
+                     sort: Annotated[Literal["best", "fair", "rent"], Field(description="best = rent + both commutes valued at the minimum wage (default); fair = shortest longer commute first; rent = cheapest first")] = "best",
+                     transit_modes: TransitModes = None) -> dict[str, Any]:
         """Rank {city} neighborhoods for two people who work in two places (para, dwa biura): median rent, both commutes and
         monthly_cost (rent + both commutes valued at the minimum wage). Each person can use a different mode. Neighborhoods with
         fewer than 20 ads are skipped."""
-        return dj.rank_for_two(a_lat, a_lon, b_lat, b_lon, mode_a, mode_b, max_commute_min, max_rent, rooms, limit, sort)
+        return dj.rank_for_two(a_lat, a_lon, b_lat, b_lon, mode_a, mode_b, max_commute_min, max_rent, rooms, limit, sort, transit_modes)
 
     @mcp.tool(annotations=RO)
     @_safe
@@ -302,12 +309,12 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
 
     @mcp.tool(annotations=RO)
     @_safe
-    def reachable_neighborhoods(lat: Lat, lon: Lon, max_minutes: Annotated[int, Field(description="Max minutes from home to this point", ge=1, le=90)] = 30,
+    def reachable_neighborhoods(lat: Lat, lon: Lon, max_minutes: Annotated[int, Field(description="Max minutes from home to this point", ge=1, le=eng.STOP_CUT)] = 30,
                                 mode: Mode = "transit", rooms: Rooms = None,
-                                limit: Annotated[int, Field(ge=1, le=100)] = 50) -> dict[str, Any]:
+                                limit: Annotated[int, Field(ge=1, le=100)] = 50, transit_modes: TransitModes = None) -> dict[str, Any]:
         """Every neighborhood from which this point (e.g. the office) is reached within max_minutes, fastest first (zasieg w N minut).
         Lists also neighborhoods with too few ads for a price (median_rent null), unlike rank_neighborhoods."""
-        return dj.reachable_neighborhoods(lat, lon, max_minutes, mode, rooms, limit)
+        return dj.reachable_neighborhoods(lat, lon, max_minutes, mode, rooms, limit, transit_modes)
 
     @mcp.tool(annotations=RO)
     @_safe
@@ -320,7 +327,7 @@ def build_server(data_dir=None, host="127.0.0.1", port=8790):
     @mcp.tool(annotations=RO)
     @_safe
     @_city_doc
-    def rank_office_locations(postcodes: Annotated[list[Any], Field(max_length=1000, json_schema_extra={"items": {"type": "string", "maxLength": 10}}, description="One postcode per employee, form NN-NNN, up to 1000 entries (repeat a code for several people). Covered city area only, prefixes 00-05.")],
+    def rank_office_locations(postcodes: Annotated[list[Any], Field(max_length=1000, json_schema_extra={"items": {"type": "string", "maxLength": 10}}, description="One postcode per employee, form NN-NNN, up to 1000 entries (repeat a code for several people). Covered city area only.")],
                               limit: Annotated[int, Field(ge=1, le=50)] = 10,
                               mode: Annotated[Literal["transit"], Field(description="transit only")] = "transit") -> dict[str, Any]:
         """Best offices to rent in {city} for a team, from the employees' postcodes (gdzie wynajac biuro: ranking biur dla zespolu).

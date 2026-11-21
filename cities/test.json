@@ -3,12 +3,14 @@
  "slug": "test",
  "nightly": false,
  "region": "mazowieckie",
+ "regionName": "Mazowieckie",
  "name": {
   "nom": "Testowo",
   "gen": "Testowa",
   "loc": "Testowie",
   "en": "Testtown"
  },
+ "postcodePrefix": "0[0-5]",
  "municipalities": [
   "Warszawa"
  ],

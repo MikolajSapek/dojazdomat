@@ -115,7 +115,12 @@ class HoodsQuery(Origin):
     mode: Literal["transit", "bike", "walk", "car"] = "transit"
 
 
+class CommuteQuery(Origin):
+    m: int = Field(eng.ALL_MODES, ge=0, le=eng.ALL_MODES)  # transit modes bit mask: metro 1, rail 2, tram 4, bus 8 (web/app.js modeMask)
+
+
 OriginQ = Annotated[Origin, Query()]
+CommuteQ = Annotated[CommuteQuery, Query()]
 RentQ = Annotated[RentQuery, Query()]
 HoodsQ = Annotated[HoodsQuery, Query()]
 
@@ -169,13 +174,13 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
                     st["stops_db"] = c.execute("SELECT EXISTS (SELECT 1 FROM core.stop_group)").fetchone()[0]
             if loaded:
                 st["source"] = "db"
-                st["engine"] = eng.Engine(*loaded, eng.read_walk(data_dir))
+                st["engine"] = eng.Engine(*loaded, eng.read_walk(data_dir), eng.read_variants(data_dir, len(loaded[0])))
                 st["files_stops"], st["sig"] = loaded[0], files_sig()
             else:
                 st["source"] = "files"
                 sig = files_sig()
                 loaded = eng.read_files(data_dir)
-                st["engine"] = eng.Engine(*loaded, eng.read_walk(data_dir))
+                st["engine"] = eng.Engine(*loaded, eng.read_walk(data_dir), eng.read_variants(data_dir, len(loaded[0])))
                 st["files_stops"], st["sig"] = loaded[0], sig
         except Exception:
             log.exception("commute data unreadable (stops.json / matrix.bin / walk.json); data endpoints answer 503, retry in %ds",
@@ -246,7 +251,7 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
 
     def files_sig():
         d = Path(data_dir)
-        return tuple(f.stat().st_mtime_ns if f.exists() else 0 for f in (d / "stops.json", d / "matrix.bin", d / "walk.json"))
+        return tuple(f.stat().st_mtime_ns if f.exists() else 0 for f in (d / "stops.json", d / "matrix.bin", d / "walk.json", d / "matrix-variants.json", *sorted(d.glob("matrix-*.bin"))))
 
     def reload_files():
         """File-sourced matrix only: rebuild the engine when refresh.sh rsyncs new data (a DB matrix is static).
@@ -260,7 +265,7 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
             if sig == st["sig"]:
                 return
             loaded = eng.read_files(data_dir)
-            new = eng.Engine(*loaded, eng.read_walk(data_dir))
+            new = eng.Engine(*loaded, eng.read_walk(data_dir), eng.read_variants(data_dir, len(loaded[0])))
             with cache_lock:  # swap and invalidate together: grid() only stores results computed on the current generation
                 st["engine"], st["files_stops"], st["sig"] = new, loaded[0], sig
                 st["gen"] += 1
@@ -281,8 +286,7 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
         outside any lock readers take, the old core keeps serving meanwhile, a failed rebuild is retried after 60 s.
         ponytail: it holds a second Engine per worker (~200 MB); share st["engine"] if memory matters."""
         d = Path(data_dir)
-        sig = tuple(f.stat().st_mtime_ns if f.exists() else 0
-                    for f in (d / "offers.json", d / "neighborhoods.json", d / "stops.json", d / "matrix.bin", d / "walk.json"))
+        sig = tuple(f.stat().st_mtime_ns if f.exists() else 0 for f in (d / "offers.json", d / "neighborhoods.json")) + files_sig()
         cur = offers["cur"]
         if cur and cur[1] == sig:
             return cur[0]
@@ -313,9 +317,9 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
         finally:
             offers_build.release()
 
-    def grid(lat, lon):
+    def grid(lat, lon, modes=eng.ALL_MODES):
         reload_files()
-        key = (round(lat, 5), round(lon, 5))
+        key = (round(lat, 5), round(lon, 5), modes)
         with cache_lock:
             if key in cache:
                 cache.move_to_end(key)
@@ -324,7 +328,10 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
             e, gen = st["engine"], st["gen"]
         if e is None:
             raise ApiError(503, "commute data unavailable")
-        g = e.grid(lat, lon)
+        try:
+            g = e.grid(lat, lon, modes)
+        except KeyError:
+            raise ApiError(503, "this combination of transit modes is not available yet") from None
         with cache_lock:
             if gen == st["gen"]:  # an engine swap during the computation makes g stale: serve it once, do not cache it
                 cache[key] = g
@@ -353,8 +360,8 @@ def create_app(database_url=None, data_dir=None, rate_limit=None, cors=None, clo
         return envelope({"stops": n}, error=None if n else "commute data unavailable", status=200 if n else 503)
 
     @app.get("/api/commute")
-    def commute(o: OriginQ):
-        g = grid(o.lat, o.lon)
+    def commute(o: CommuteQ):
+        g = grid(o.lat, o.lon, o.m)
         head = np.array([eng.ROWS, eng.COLS], "<u2").tobytes()
         return Response(head + g.tobytes(), media_type="application/octet-stream",
                         headers={"X-Grid-Rows": str(eng.ROWS), "X-Grid-Cols": str(eng.COLS),

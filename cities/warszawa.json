@@ -8,12 +8,14 @@
   "streetExtent": "pipeline/geo/street-extent.json"
  },
  "region": "mazowieckie",
+ "regionName": "Mazowieckie",
  "name": {
   "nom": "Warszawa",
   "gen": "Warszawy",
   "loc": "Warszawie",
   "en": "Warsaw"
  },
+ "postcodePrefix": "0[0-5]",
  "municipalities": [
   "Warszawa"
  ],
@@ -172,7 +174,7 @@
    "Piaseczno",
    52.07473,
    21.02708,
-   336137
+   336134
   ],
   [
    "Pruszków",
@@ -196,7 +198,7 @@
    "Łomianki",
    52.33552,
    20.89501,
-   336313
+   336312
   ],
   [
    "Legionowo",
@@ -238,7 +240,7 @@
    "Konstancin-Jeziorna",
    52.08347,
    21.1208,
-   336138
+   336130
   ],
   [
    "Otwock",
@@ -250,13 +252,13 @@
    "Wołomin",
    52.34686,
    21.24201,
-   1994189
+   2997512
   ],
   [
    "Grodzisk Mazowiecki",
    52.10662,
    20.63134,
-   336415
+   336618
   ],
   [
    "Nowy Dwór Mazowiecki",
@@ -305,6 +307,54 @@
     "role": "rail_regional",
     "label": "KM",
     "agency": "KM"
+   },
+   {
+    "name": "otwock",
+    "url": "https://files.girlc.at/gtfs/otwock.zip",
+    "role": "bus_local",
+    "label": "LOTWOCK"
+   },
+   {
+    "name": "nowy_dwor",
+    "url": "https://files.girlc.at/gtfs/nowy_dwor_mazowiecki.zip",
+    "role": "bus_local",
+    "label": "LNOWY_D"
+   },
+   {
+    "name": "lomianki",
+    "url": "https://files.girlc.at/gtfs/lomianki.zip",
+    "role": "bus_local",
+    "label": "LLOMIAN"
+   },
+   {
+    "name": "zabki",
+    "url": "https://files.girlc.at/gtfs/zabki.zip",
+    "role": "bus_local",
+    "label": "LZABKI"
+   },
+   {
+    "name": "sulejowek",
+    "url": "https://files.girlc.at/gtfs/sulejowek.zip",
+    "role": "bus_local",
+    "label": "LSULEJO"
+   },
+   {
+    "name": "halinow",
+    "url": "https://files.girlc.at/gtfs/halinow.zip",
+    "role": "bus_local",
+    "label": "LHALINO"
+   },
+   {
+    "name": "pruszkow",
+    "url": "https://api.zbiorkom.live/api6-open/warsaw/gtfs/PRUSZKOW",
+    "role": "bus_local",
+    "label": "LPRUSZK"
+   },
+   {
+    "name": "pow_minski",
+    "url": "https://files.girlc.at/gtfs/powiat_minski.zip",
+    "role": "bus_local",
+    "label": "LPOW_MI"
    }
   ],
   "outBbox": [
@@ -319,7 +369,7 @@
    20.45,
    21.75
   ],
-  "maxN": 3200,
+  "maxN": 4000,
   "colors": {
    "M1": "#0000bb",
    "M2": "#bb0000",
@@ -385,7 +435,7 @@
     "Metro Trocka"
    ]
   ],
-  "sources": "ZTM Warszawa, SKM, Koleje Mazowieckie, WKD"
+  "sources": "ZTM Warszawa, SKM, Koleje Mazowieckie, WKD, linie lokalne (T4B, zbiorkom.live)"
  },
  "portals": {
   "olx": {
@@ -429,5 +479,7 @@
    ]
   }
  },
- "_regionTowns": "regionTowns: [name, label lat, label lon, OSM relation id of its gmina boundary (admin_level 7) = the area its median counts]"
+ "_regionTowns": "regionTowns: [name, label lat, label lon, OSM relation id of its town boundary (the area its median counts)]",
+  "placePoints_": "Google Maps pin per place name (searched 2026-11-19, headed Chrome); label and commute start when it lies inside the place area (pipeline/walk/neighborhoods.py). Missing: Google pin outside the area or not found.",
+  "placePoints": {"Bemowo-Lotnisko": [52.25724, 20.92021], "Boernerowo": [52.26233, 20.90023], "Chrzanów": [52.22471, 20.88583], "Fort Bema": [52.25927, 20.93926], "Fort Radiowo": [52.25662, 20.89355], "Groty": [52.25059, 20.87355], "Górce": [52.2427, 20.90872], "Jelonki Południowe": [52.2205, 20.90863], "Jelonki Północne": [52.23559, 20.90965], "Białołęka Dworska": [52.34171, 21.00456], "Brzeziny": [52.31865, 21.03877], "Choszczówka": [52.35364, 20.97026], "Dąbrówka Szlachecka": [52.34393, 20.96257], "Grodzisk": [52.33349, 21.06371], "Henryków": [52.32999, 20.97776], "Kobiałka": [52.35573, 21.06389], "Nowodwory": [52.33392, 20.94152], "Szamocin": [52.33887, 21.01982], "Tarchomin": [52.31685, 20.95861], "Żerań": [52.31291, 20.99483], "Huta": [52.29683, 20.91656], "Las Bielański": [52.29462, 20.95849], "Marymont-Kaskada": [52.28054, 20.96699], "Marymont-Ruda": [52.28419, 20.97996], "Młociny": [52.31279, 20.92044], "Piaski": [52.2681, 20.94763], "Placówka": [52.29495, 20.90417], "Radiowo": [52.28368, 20.89746], "Stare Bielany": [52.28008, 20.94698], "Słodowiec": [52.27241, 20.95837], "Wawrzyszew": [52.2829, 20.93175], "Wrzeciono": [52.2926, 20.93942], "Wólka Węglowa": [52.30105, 20.89371], "Augustówka": [52.19464, 21.08816], "Czerniaków": [52.20431, 21.0574], "Ksawerów": [52.187, 21.01928], "Sadyba": [52.18683, 21.06382], "Siekierki": [52.21252, 21.07303], "Sielce": [52.20186, 21.03529], "Stary Mokotów": [52.20331, 21.01012], "Stegny": [52.1774, 21.04562], "Służew": [52.17333, 21.01998], "Służewiec": [52.17991, 20.99405], "Wierzbno": [52.19323, 21.01496], "Wyględów": [52.19676, 20.99286], "Filtry": [52.2189, 20.9999], "Rakowiec": [52.20258, 20.97429], "Stara Ochota": [52.21735, 20.97805], "Szczęśliwice": [52.20751, 20.96373], "Gocław": [52.22507, 21.09263], "Gocławek": [52.2398, 21.11427], "Grochów": [52.23976, 21.08693], "Kamionek": [52.24729, 21.05611], "Saska Kępa": [52.23237, 21.0608], "Nowa Praga": [52.25968, 21.02689], "Pelcowizna": [52.27362, 21.01174], "Stara Praga": [52.24716, 21.03442], "Szmulowizna": [52.25871, 21.05452], "Kawęczyn-Wygoda": [52.26041, 21.12184], "Nowy Rembertów": [52.25127, 21.16117], "Stary Rembertów": [52.26307, 21.14584], "Bródno": [52.28843, 21.03076], "Bródno-Podgrodzie": [52.29702, 21.06533], "Elsnerów": [52.27538, 21.09185], "Targówek Fabryczny": [52.26712, 21.07652], "Targówek Mieszkaniowy": [52.27138, 21.05367], "Utrata": [52.26769, 21.10323], "Zacisze": [52.2862, 21.07859], "Czechowice": [52.18658, 20.88189], "Gołąbki": [52.20188, 20.85914], "Niedźwiadek": [52.19337, 20.86767], "Skorosze": [52.18862, 20.9009], "Szamoty": [52.20252, 20.88575], "Dąbrówka": [52.11151, 21.02484], "Grabów": [52.14274, 21.00608], "Jeziorki Południowe": [52.11048, 21.00937], "Jeziorki Północne": [52.13221, 20.99557], "Kabaty": [52.12916, 21.07151], "Natolin": [52.13824, 21.05259], "Pyry": [52.12968, 21.01806], "Skarpa Powsińska": [52.109, 21.09032], "Stary Imielin": [52.14475, 21.02509], "Stary Służew": [52.16339, 21.04424], "Ursynów Centrum": [52.15074, 21.04509], "Ursynów Północny": [52.16196, 21.02792], "Wyczółki": [52.15438, 20.99571], "Aleksandrów": [52.17604, 21.22657], "Anin": [52.22093, 21.1592], "Falenica": [52.16084, 21.21208], "Las": [52.21382, 21.11455], "Marysin Wawerski": [52.23994, 21.14723], "Miedzeszyn": [52.17149, 21.2013], "Międzylesie": [52.20932, 21.19223], "Nadwiśle": [52.17208, 21.15489], "Radość": [52.18398, 21.1895], "Sadul": [52.21005, 21.15126], "Groszówka": [52.24611, 21.2231], "Plac Wojska Polskiego": [52.25611, 21.22959], "Stara Miłosna": [52.21659, 21.23006], "Wesoła-Centrum": [52.2491, 21.22603], "Błonia Wilanowskie": [52.15303, 21.07743], "Kępa Zawadowska": [52.14963, 21.14015], "Powsin": [52.12519, 21.10758], "Powsinek": [52.15048, 21.10592], "Wilanów Królewski": [52.16924, 21.09469], "Wilanów Niski": [52.17692, 21.08335], "Wilanów Wysoki": [52.17186, 21.06951], "Zawady": [52.17456, 21.11104], "Czyste": [52.22862, 20.96731], "Koło": [52.24676, 20.94681], "Mirów": [52.23196, 20.9925], "Młynów": [52.23768, 20.9658], "Nowolipki": [52.2444, 20.98202], "Odolany": [52.21971, 20.94287], "Powązki": [52.25137, 20.96957], "Ulrychów": [52.23222, 20.93532], "Nowe Włochy": [52.2094, 20.90859], "Okęcie": [52.17987, 20.97812], "Opacz Wielka": [52.17729, 20.9246], "Paluch": [52.15377, 20.96912], "Raków": [52.19611, 20.95035], "Salomea": [52.18924, 20.92751], "Stare Włochy": [52.19991, 20.91434], "Załuski": [52.17049, 20.93882], "Muranów": [52.25025, 20.99539], "Nowe Miasto": [52.25589, 21.00547], "Powiśle": [52.24072, 21.02583], "Solec": [52.2298, 21.0381], "Stare Miasto": [52.24773, 21.01361], "Ujazdów": [52.2187, 21.03802], "Śródmieście Południowe": [52.22308, 21.01553], "Śródmieście Północne": [52.23546, 21.00767], "Marymont-Potok": [52.27786, 20.9889], "Sady Żoliborskie": [52.25989, 20.96592], "Stary Żoliborz": [52.26676, 20.98883], "Piaseczno": [52.08115, 21.02386], "Pruszków": [52.17047, 20.81189], "Ząbki": [52.28707, 21.10796], "Marki": [52.32134, 21.10357], "Łomianki": [52.33366, 20.88699], "Legionowo": [52.40445, 20.94997], "Józefów": [52.13682, 21.23543], "Piastów": [52.18452, 20.84004], "Kobyłka": [52.33924, 21.19598], "Zielonka": [52.30344, 21.16072], "Lesznowola": [52.09068, 20.93452], "Konstancin-Jeziorna": [52.09387, 21.11772], "Otwock": [52.10532, 21.26162], "Wołomin": [52.33912, 21.24232], "Grodzisk Mazowiecki": [52.10444, 20.63509], "Nowy Dwór Mazowiecki": [52.44651, 20.69252]}
 }

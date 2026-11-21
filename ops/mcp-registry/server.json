@@ -4,7 +4,7 @@
   "title": "Dojazdomat",
   "description": "Warsaw commute times and rent medians by area; rank office locations from staff postcodes.",
   "websiteUrl": "https://dojazdomat.pl/o-projekcie",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "remotes": [
     {
       "type": "streamable-http",
